@@ -20,6 +20,8 @@ export default function Player({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
   const [ready, setReady] = useState(false);
   const [displayPosition, setDisplayPosition] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -40,6 +42,56 @@ export default function Player({
       playedHistoryRef.current.push(state.videoId);
     }
   }, [state?.videoId]);
+
+  // Mobile Lock Screen & Background Audio Keeper (Silent Audio Loop)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!audioRef.current) {
+      // 1-second silent WAV data URI to keep background media thread active on mobile lock screen
+      const audio = new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=");
+      audio.loop = true;
+      audioRef.current = audio;
+    }
+
+    if (isPlayingLocal) {
+      audioRef.current.play().catch(() => {});
+    } else {
+      audioRef.current.pause();
+    }
+  }, [isPlayingLocal]);
+
+  // Mobile Lockscreen MediaSession Integration (iOS Lock Screen / Android Notification Controls)
+  useEffect(() => {
+    if (typeof window === "undefined" || !("mediaSession" in navigator)) return;
+
+    if (state?.title) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: state.title,
+        artist: state.updatedBy ? `Synced with ${state.updatedBy}` : "Lovewave Music",
+        artwork: state.thumbnail
+          ? [
+              { src: state.thumbnail, sizes: "96x96", type: "image/jpeg" },
+              { src: state.thumbnail, sizes: "512x512", type: "image/jpeg" },
+            ]
+          : [],
+      });
+    }
+
+    try {
+      navigator.mediaSession.setActionHandler("play", () => togglePlay());
+      navigator.mediaSession.setActionHandler("pause", () => togglePlay());
+      navigator.mediaSession.setActionHandler("nexttrack", () => handleSongEnded());
+    } catch {}
+
+    return () => {
+      try {
+        navigator.mediaSession.setActionHandler("play", null);
+        navigator.mediaSession.setActionHandler("pause", null);
+        navigator.mediaSession.setActionHandler("nexttrack", null);
+      } catch {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.title, state?.thumbnail, state?.updatedBy]);
 
   // Calculate live expected position taking into account network latency
   const getExpectedPosition = (): number => {
@@ -91,7 +143,7 @@ export default function Player({
           onStateChange: (e: any) => {
             const playing = e.data === YT.PlayerState.PLAYING;
             setIsPlayingLocal(playing);
-            onListeningChange(playing && document.visibilityState === "visible");
+            onListeningChange(playing);
 
             if (playing) {
               setNeedsGestureToSync(false);
@@ -181,11 +233,9 @@ export default function Player({
     }
   };
 
-  // Track visibility to fold into "listening" status.
+  // Track listening presence status
   useEffect(() => {
-    const handler = () => onListeningChange(isPlayingLocal && document.visibilityState === "visible");
-    document.addEventListener("visibilitychange", handler);
-    return () => document.removeEventListener("visibilitychange", handler);
+    onListeningChange(isPlayingLocal);
   }, [isPlayingLocal, onListeningChange]);
 
   // Tick displayed position & trigger fallback end detection if video reaches end
