@@ -32,21 +32,27 @@ export default function Player({
   const loadedVideoIdRef = useRef<string | null>(null);
   const isHandlingEndRef = useRef(false);
 
-  // Initialize YouTube Player
+  // Initialize YouTube Player with full embed parameters & error recovery
   useEffect(() => {
     let cancelled = false;
     loadYouTubeIframeApi().then(() => {
       if (cancelled || !containerRef.current) return;
       const YT = (window as any).YT;
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+
       playerRef.current = new YT.Player(containerRef.current, {
         height: "100%",
         width: "100%",
+        host: "https://www.youtube-nocookie.com",
         playerVars: {
+          autoplay: 1,
           controls: 1,
           disablekb: 0,
+          enablejsapi: 1,
+          origin: origin,
+          widget_referrer: origin,
           rel: 0,
           modestbranding: 1,
-          autoplay: 1,
           playsinline: 1,
         },
         events: {
@@ -61,6 +67,16 @@ export default function Player({
               handleSongEnded();
             }
           },
+          onError: (e: any) => {
+            console.warn("YouTube Player error code:", e.data);
+            // Error codes: 101 / 150 = Embedding disabled by owner, 100 = Not found, 2/5 = HTML5/Param error
+            if (e.data === 101 || e.data === 150 || e.data === 100 || e.data === 2 || e.data === 5) {
+              setAutoplayNotice("Embedding restricted for this video. Auto-skipping to alternative track...");
+              setTimeout(() => {
+                handleSongEnded();
+              }, 1500);
+            }
+          },
         },
       });
     });
@@ -71,7 +87,7 @@ export default function Player({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Handle Autoplay / Next Song when current video finishes
+  // Handle Autoplay / Next Song when current video finishes or errors out
   const handleSongEnded = async () => {
     if (isHandlingEndRef.current) return;
     isHandlingEndRef.current = true;
