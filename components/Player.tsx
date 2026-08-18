@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { loadYouTubeIframeApi, fetchRecommendations } from "@/lib/youtube";
 import { PlaybackState, pushState, QueueItem, removeFromQueue } from "@/lib/room";
 
-const DRIFT_TOLERANCE_SEC = 0.8;
+const DRIFT_TOLERANCE_SEC = 1.0;
 const HEARTBEAT_MS = 4000;
 
 export default function Player({
@@ -22,6 +22,7 @@ export default function Player({
   const playerRef = useRef<any>(null);
   const audioCtxRef = useRef<any>(null);
   const latestStateRef = useRef<PlaybackState | null>(state);
+  const lastCommandRef = useRef<"play" | "pause" | null>(null);
 
   const [ready, setReady] = useState(false);
   const [displayPosition, setDisplayPosition] = useState(0);
@@ -91,8 +92,10 @@ export default function Player({
     const expected = getExpectedPosition();
     playerRef.current.seekTo(expected, true);
     if (state.isPlaying) {
+      lastCommandRef.current = "play";
       playerRef.current.playVideo();
     } else {
+      lastCommandRef.current = "pause";
       playerRef.current.pauseVideo();
     }
     setNeedsGestureToSync(false);
@@ -128,11 +131,17 @@ export default function Player({
     try {
       navigator.mediaSession.setActionHandler("play", () => {
         initBackgroundAudioContext();
-        if (playerRef.current) playerRef.current.playVideo?.();
+        if (playerRef.current) {
+          lastCommandRef.current = "play";
+          playerRef.current.playVideo?.();
+        }
         pushState({ isPlaying: true, positionSec: playerRef.current?.getCurrentTime?.() ?? 0 }, selfName);
       });
       navigator.mediaSession.setActionHandler("pause", () => {
-        if (playerRef.current) playerRef.current.pauseVideo?.();
+        if (playerRef.current) {
+          lastCommandRef.current = "pause";
+          playerRef.current.pauseVideo?.();
+        }
         pushState({ isPlaying: false, positionSec: playerRef.current?.getCurrentTime?.() ?? 0 }, selfName);
       });
       navigator.mediaSession.setActionHandler("nexttrack", () => {
@@ -187,6 +196,7 @@ export default function Player({
             // iOS WebKit Guard: If YouTube player attempts to unpause/buffer while room is PAUSED, force pause!
             if (latestStateRef.current && !latestStateRef.current.isPlaying) {
               if (isPlaying || isBuffering) {
+                lastCommandRef.current = "pause";
                 playerRef.current?.pauseVideo?.();
                 setIsPlayingLocal(false);
                 onListeningChange(false);
@@ -317,16 +327,17 @@ export default function Player({
     return () => clearInterval(id);
   }, [state, selfName]);
 
-  // Reconcile video changes and remote state into local YouTube player instance
+  // Single-execution state command reconciliation to eliminate duplicate pause/play calls
   useEffect(() => {
     if (!ready || !state || !playerRef.current) return;
 
     const player = playerRef.current;
     const expected = getExpectedPosition();
 
-    // Whenever video ID changes (for self or partner), load it into YouTube player!
+    // Whenever video ID changes, load or cue it!
     if (state.videoId && state.videoId !== loadedVideoIdRef.current) {
       loadedVideoIdRef.current = state.videoId;
+      lastCommandRef.current = state.isPlaying ? "play" : "pause";
       if (state.isPlaying) {
         player.loadVideoById(state.videoId, expected);
       } else {
@@ -342,24 +353,26 @@ export default function Player({
       return;
     }
 
-    // Handle Play / Pause / Seek events from partner cleanly without pause stutter loops!
-    if (state.updatedBy !== selfName) {
+    // Handle Play vs Pause state commands strictly ONCE per state change
+    if (state.isPlaying) {
+      const current = player.getCurrentTime?.() ?? 0;
       const playerState = player.getPlayerState?.();
-      const isCurrentlyPlaying = playerState === 1 || playerState === 3;
+      const isPlaying = playerState === 1;
 
-      if (state.isPlaying) {
-        const current = player.getCurrentTime?.() ?? 0;
+      if (lastCommandRef.current !== "play" || !isPlaying) {
+        lastCommandRef.current = "play";
         if (Math.abs(current - expected) > DRIFT_TOLERANCE_SEC) {
           player.seekTo(expected, true);
         }
-        if (!isCurrentlyPlaying) {
-          player.playVideo?.();
-        }
-      } else {
-        // When state is PAUSED: strictly pause player without calling seekTo continuously!
-        if (isCurrentlyPlaying) {
-          player.pauseVideo?.();
-        }
+        player.playVideo?.();
+      } else if (Math.abs(current - expected) > DRIFT_TOLERANCE_SEC) {
+        player.seekTo(expected, true);
+      }
+    } else {
+      // When state is PAUSED: issue pause command ONCE and stay completely silent!
+      if (lastCommandRef.current !== "pause") {
+        lastCommandRef.current = "pause";
+        player.pauseVideo?.();
       }
     }
   }, [state, ready, selfName]);
@@ -372,6 +385,8 @@ export default function Player({
     const playerState = player.getPlayerState?.();
     const currentlyPlaying = playerState === 1 || isPlayingLocal;
     const nextPlaying = !currentlyPlaying;
+
+    lastCommandRef.current = nextPlaying ? "play" : "pause";
 
     if (nextPlaying) {
       player.playVideo?.();
@@ -388,6 +403,7 @@ export default function Player({
   const seekTo = (seconds: number) => {
     initBackgroundAudioContext();
     if (!playerRef.current) return;
+    lastCommandRef.current = "play";
     playerRef.current.seekTo(seconds, true);
     setDisplayPosition(seconds);
     pushState({ isPlaying: true, positionSec: seconds }, selfName);
