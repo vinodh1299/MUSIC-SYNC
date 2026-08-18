@@ -297,6 +297,15 @@ export default function Player({
           >
             {isPlayingLocal ? "❚❚" : "▶"}
           </button>
+          <button
+            className="player-next"
+            onClick={() => handleSongEnded()}
+            disabled={!state?.title}
+            aria-label="Next song"
+            title="Play next song from queue or recommendations"
+          >
+            ⏭
+          </button>
           <span className="player-time">{fmt(displayPosition)}</span>
           <input
             className="player-seek"
