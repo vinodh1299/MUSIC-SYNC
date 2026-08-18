@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { loadYouTubeIframeApi, fetchRecommendations } from "@/lib/youtube";
 import { PlaybackState, pushState, QueueItem, removeFromQueue } from "@/lib/room";
 
-const DRIFT_TOLERANCE_SEC = 0.4;
-const HEARTBEAT_MS = 3000;
+const DRIFT_TOLERANCE_SEC = 0.8;
+const HEARTBEAT_MS = 4000;
 
 export default function Player({
   selfName,
@@ -53,7 +53,7 @@ export default function Player({
           const ctx = new AudioContextClass();
           const osc = ctx.createOscillator();
           const gain = ctx.createGain();
-          gain.gain.value = 0.001; // Silent gain node
+          gain.gain.value = 0.001;
           osc.connect(gain);
           gain.connect(ctx.destination);
           osc.start();
@@ -290,7 +290,7 @@ export default function Player({
     return () => clearInterval(id);
   }, [isPlayingLocal]);
 
-  // High-frequency 3s drift-correction heartbeat
+  // High-frequency drift-correction heartbeat when playing
   useEffect(() => {
     const id = setInterval(() => {
       if (!state || state.updatedBy !== selfName || !state.isPlaying || !playerRef.current?.getCurrentTime) return;
@@ -324,21 +324,24 @@ export default function Player({
       return;
     }
 
-    // Handle Play / Pause / Seek events from partner instantly!
+    // Handle Play / Pause / Seek events from partner cleanly without pause stutter loops!
     if (state.updatedBy !== selfName) {
-      const current = player.getCurrentTime?.() ?? 0;
       const playerState = player.getPlayerState?.();
-      const isCurrentlyPlaying = playerState === 1;
+      const isCurrentlyPlaying = playerState === 1 || playerState === 3;
 
-      // Tight 0.4s drift check for live sync
-      if (Math.abs(current - expected) > DRIFT_TOLERANCE_SEC) {
-        player.seekTo(expected, true);
-      }
-
-      if (state.isPlaying && !isCurrentlyPlaying) {
-        player.playVideo?.();
-      } else if (!state.isPlaying && isCurrentlyPlaying) {
-        player.pauseVideo?.();
+      if (state.isPlaying) {
+        const current = player.getCurrentTime?.() ?? 0;
+        if (Math.abs(current - expected) > DRIFT_TOLERANCE_SEC) {
+          player.seekTo(expected, true);
+        }
+        if (!isCurrentlyPlaying) {
+          player.playVideo?.();
+        }
+      } else {
+        // When state is PAUSED: strictly pause player without calling seekTo continuously!
+        if (isCurrentlyPlaying) {
+          player.pauseVideo?.();
+        }
       }
     }
   }, [state, ready, selfName]);

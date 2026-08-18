@@ -1,7 +1,6 @@
 "use client";
 
 import { Presence } from "@/lib/room";
-import { clearIdentity } from "./IdentityGate";
 
 export default function ConnectionThread({
   selfName,
@@ -20,13 +19,6 @@ export default function ConnectionThread({
       <div className="thread-node">
         <span className="thread-dot thread-dot-self" />
         <span className="thread-name">{selfName}</span>
-        <button
-          className="switch-identity-btn"
-          onClick={clearIdentity}
-          title="Switch between Vinodh & Keerthana"
-        >
-          (Switch)
-        </button>
       </div>
 
       <svg
