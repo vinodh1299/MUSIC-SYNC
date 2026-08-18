@@ -324,11 +324,11 @@ input {
 }
 
 .mode-compact .youtube-video-container {
-  max-height: 0px;
   aspect-ratio: auto;
-  opacity: 0;
+  height: 120px;
+  opacity: 1;
   overflow: hidden;
-  margin: 0;
+  border-radius: 12px;
 }
 
 .youtube-player-frame {
