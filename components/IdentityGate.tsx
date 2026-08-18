@@ -2,7 +2,14 @@
 
 import { useEffect, useState } from "react";
 
-const STORAGE_KEY = "lovewave:identity";
+export const STORAGE_KEY = "lovewave:identity";
+
+export function clearIdentity() {
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(STORAGE_KEY);
+    window.location.reload();
+  }
+}
 
 export default function IdentityGate({
   names,
@@ -16,13 +23,18 @@ export default function IdentityGate({
 
   useEffect(() => {
     const existing = window.localStorage.getItem(STORAGE_KEY);
-    if (existing && names.includes(existing)) {
-      setSaved(existing);
-      onReady(existing);
+    if (existing) {
+      if (names.includes(existing)) {
+        setSaved(existing);
+        onReady(existing);
+      } else {
+        // Clear obsolete cached names (like Alex/Sam)
+        window.localStorage.removeItem(STORAGE_KEY);
+      }
     }
     setChecked(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [names]);
 
   if (!checked || saved) return null;
 
@@ -37,7 +49,7 @@ export default function IdentityGate({
       <div className="gate-card">
         <p className="gate-eyebrow">before we begin</p>
         <h1 className="gate-title">Who&rsquo;s listening?</h1>
-        <p className="gate-sub">This device will remember you.</p>
+        <p className="gate-sub">Choose your identity for this room:</p>
         <div className="gate-options">
           {names.map((name) => (
             <button key={name} className="gate-btn" onClick={() => choose(name)}>

@@ -137,6 +137,22 @@ input {
   white-space: nowrap;
 }
 
+.switch-identity-btn {
+  background: transparent;
+  border: none;
+  color: var(--thread);
+  font-size: 11px;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+}
+
+.switch-identity-btn:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
 .thread-dot {
   width: 8px;
   height: 8px;

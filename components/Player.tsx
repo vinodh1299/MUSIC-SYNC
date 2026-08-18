@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { loadYouTubeIframeApi, fetchRecommendations } from "@/lib/youtube";
 import { PlaybackState, pushState, QueueItem, removeFromQueue } from "@/lib/room";
 
-const DRIFT_TOLERANCE_SEC = 0.6;
+const DRIFT_TOLERANCE_SEC = 0.4;
 const HEARTBEAT_MS = 3000;
 
 export default function Player({
@@ -20,7 +20,7 @@ export default function Player({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioCtxRef = useRef<any>(null);
 
   const [ready, setReady] = useState(false);
   const [displayPosition, setDisplayPosition] = useState(0);
@@ -43,22 +43,54 @@ export default function Player({
     }
   }, [state?.videoId]);
 
-  // Mobile Lock Screen & Background Audio Keeper (Silent Audio Loop)
-  useEffect(() => {
+  // Web Audio API Background Session Keeper for Mobile iOS Safari & Android Chrome Screen Lock
+  const initBackgroundAudioContext = () => {
     if (typeof window === "undefined") return;
-    if (!audioRef.current) {
-      // 1-second silent WAV data URI to keep background media thread active on mobile lock screen
-      const audio = new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=");
-      audio.loop = true;
-      audioRef.current = audio;
+    try {
+      if (!audioCtxRef.current) {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioContextClass) {
+          const ctx = new AudioContextClass();
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          gain.gain.value = 0.001; // Silent gain node
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start();
+          audioCtxRef.current = ctx;
+        }
+      }
+      if (audioCtxRef.current && audioCtxRef.current.state === "suspended") {
+        audioCtxRef.current.resume().catch(() => {});
+      }
+    } catch (err) {
+      console.warn("Background audio context init:", err);
     }
+  };
 
-    if (isPlayingLocal) {
-      audioRef.current.play().catch(() => {});
+  // Calculate live expected position taking into account network latency
+  const getExpectedPosition = (): number => {
+    if (!state) return 0;
+    const elapsed =
+      state.isPlaying && typeof state.updatedAt === "number"
+        ? Math.max(0, (Date.now() - state.updatedAt) / 1000)
+        : 0;
+    return state.positionSec + elapsed;
+  };
+
+  // Helper to join live playback with gesture activation
+  const joinLiveSync = () => {
+    initBackgroundAudioContext();
+    if (!playerRef.current || !state) return;
+    const expected = getExpectedPosition();
+    playerRef.current.seekTo(expected, true);
+    if (state.isPlaying) {
+      playerRef.current.playVideo();
     } else {
-      audioRef.current.pause();
+      playerRef.current.pauseVideo();
     }
-  }, [isPlayingLocal]);
+    setNeedsGestureToSync(false);
+  };
 
   // Mobile Lockscreen MediaSession Integration (iOS Lock Screen / Android Notification Controls)
   useEffect(() => {
@@ -77,10 +109,34 @@ export default function Player({
       });
     }
 
+    if (duration > 0 && typeof navigator.mediaSession.setPositionState === "function") {
+      try {
+        navigator.mediaSession.setPositionState({
+          duration: Math.max(1, duration),
+          playbackRate: 1,
+          position: Math.min(displayPosition, duration),
+        });
+      } catch {}
+    }
+
     try {
-      navigator.mediaSession.setActionHandler("play", () => togglePlay());
-      navigator.mediaSession.setActionHandler("pause", () => togglePlay());
-      navigator.mediaSession.setActionHandler("nexttrack", () => handleSongEnded());
+      navigator.mediaSession.setActionHandler("play", () => {
+        initBackgroundAudioContext();
+        if (playerRef.current) playerRef.current.playVideo?.();
+        pushState({ isPlaying: true, positionSec: playerRef.current?.getCurrentTime?.() ?? 0 }, selfName);
+      });
+      navigator.mediaSession.setActionHandler("pause", () => {
+        if (playerRef.current) playerRef.current.pauseVideo?.();
+        pushState({ isPlaying: false, positionSec: playerRef.current?.getCurrentTime?.() ?? 0 }, selfName);
+      });
+      navigator.mediaSession.setActionHandler("nexttrack", () => {
+        handleSongEnded();
+      });
+      navigator.mediaSession.setActionHandler("seekto", (details) => {
+        if (details.seekTime != null) {
+          seekTo(details.seekTime);
+        }
+      });
     } catch {}
 
     return () => {
@@ -88,33 +144,11 @@ export default function Player({
         navigator.mediaSession.setActionHandler("play", null);
         navigator.mediaSession.setActionHandler("pause", null);
         navigator.mediaSession.setActionHandler("nexttrack", null);
+        navigator.mediaSession.setActionHandler("seekto", null);
       } catch {}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state?.title, state?.thumbnail, state?.updatedBy]);
-
-  // Calculate live expected position taking into account network latency
-  const getExpectedPosition = (): number => {
-    if (!state) return 0;
-    const elapsed =
-      state.isPlaying && typeof state.updatedAt === "number"
-        ? Math.max(0, (Date.now() - state.updatedAt) / 1000)
-        : 0;
-    return state.positionSec + elapsed;
-  };
-
-  // Helper to join live playback with gesture activation
-  const joinLiveSync = () => {
-    if (!playerRef.current || !state) return;
-    const expected = getExpectedPosition();
-    playerRef.current.seekTo(expected, true);
-    if (state.isPlaying) {
-      playerRef.current.playVideo();
-    } else {
-      playerRef.current.pauseVideo();
-    }
-    setNeedsGestureToSync(false);
-  };
+  }, [state?.title, state?.thumbnail, state?.updatedBy, duration, displayPosition]);
 
   // Initialize YouTube Player
   useEffect(() => {
@@ -293,33 +327,45 @@ export default function Player({
     // Handle Play / Pause / Seek events from partner instantly!
     if (state.updatedBy !== selfName) {
       const current = player.getCurrentTime?.() ?? 0;
+      const playerState = player.getPlayerState?.();
+      const isCurrentlyPlaying = playerState === 1;
+
+      // Tight 0.4s drift check for live sync
       if (Math.abs(current - expected) > DRIFT_TOLERANCE_SEC) {
         player.seekTo(expected, true);
       }
 
-      if (state.isPlaying) {
+      if (state.isPlaying && !isCurrentlyPlaying) {
         player.playVideo?.();
-      } else {
+      } else if (!state.isPlaying && isCurrentlyPlaying) {
         player.pauseVideo?.();
       }
     }
   }, [state, ready, selfName]);
 
   const togglePlay = () => {
+    initBackgroundAudioContext();
     if (!playerRef.current) return;
-    const nextPlaying = !isPlayingLocal;
+
+    const player = playerRef.current;
+    const playerState = player.getPlayerState?.();
+    const currentlyPlaying = playerState === 1 || isPlayingLocal;
+    const nextPlaying = !currentlyPlaying;
+
     if (nextPlaying) {
-      playerRef.current.playVideo();
+      player.playVideo?.();
     } else {
-      playerRef.current.pauseVideo();
+      player.pauseVideo?.();
     }
+
     pushState(
-      { isPlaying: nextPlaying, positionSec: playerRef.current.getCurrentTime?.() ?? 0 },
+      { isPlaying: nextPlaying, positionSec: player.getCurrentTime?.() ?? 0 },
       selfName
     );
   };
 
   const seekTo = (seconds: number) => {
+    initBackgroundAudioContext();
     if (!playerRef.current) return;
     playerRef.current.seekTo(seconds, true);
     setDisplayPosition(seconds);
@@ -364,7 +410,7 @@ export default function Player({
       {autoplayNotice && <div className="autoplay-banner">{autoplayNotice}</div>}
 
       {/* Main YouTube Video Interface Screen */}
-      <div className="youtube-video-container">
+      <div className="youtube-video-container" onClick={initBackgroundAudioContext}>
         <div className="youtube-player-frame" ref={containerRef} />
         {!state?.videoId && (
           <div className="player-placeholder">
