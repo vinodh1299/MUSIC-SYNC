@@ -32,7 +32,7 @@ export default function Player({
   const loadedVideoIdRef = useRef<string | null>(null);
   const isHandlingEndRef = useRef(false);
 
-  // Initialize YouTube Player with standard origin settings
+  // Initialize YouTube Player
   useEffect(() => {
     let cancelled = false;
     loadYouTubeIframeApi().then(() => {
@@ -69,7 +69,7 @@ export default function Player({
           onError: (e: any) => {
             console.warn("YouTube Player error code:", e.data);
             if (e.data === 101 || e.data === 150 || e.data === 100 || e.data === 2 || e.data === 5) {
-              setAutoplayNotice("Video embed restricted by uploader. Auto-skipping to alternative track...");
+              setAutoplayNotice("Embed restricted by uploader. Auto-skipping to alternative track...");
               setTimeout(() => {
                 handleSongEnded();
               }, 1200);
@@ -169,10 +169,9 @@ export default function Player({
     return () => clearInterval(id);
   }, [state, selfName]);
 
-  // Reconcile remote state changes into local player
+  // Reconcile video changes and remote state into local YouTube player instance
   useEffect(() => {
     if (!ready || !state || !playerRef.current) return;
-    if (state.updatedBy === selfName) return;
 
     const player = playerRef.current;
     const expected =
@@ -181,12 +180,19 @@ export default function Player({
         ? Math.max(0, (Date.now() - state.updatedAt) / 1000)
         : 0);
 
+    // Whenever video ID changes (for self or partner), load it into YouTube player!
     if (state.videoId && state.videoId !== loadedVideoIdRef.current) {
       loadedVideoIdRef.current = state.videoId;
-      if (state.isPlaying) player.loadVideoById(state.videoId, expected);
-      else player.cueVideoById(state.videoId, expected);
+      if (state.isPlaying) {
+        player.loadVideoById(state.videoId, expected);
+      } else {
+        player.cueVideoById(state.videoId, expected);
+      }
       return;
     }
+
+    // Skip position adjustments triggered by self
+    if (state.updatedBy === selfName) return;
 
     const current = player.getCurrentTime?.() ?? 0;
     if (Math.abs(current - expected) > DRIFT_TOLERANCE_SEC) {
