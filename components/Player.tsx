@@ -61,7 +61,7 @@ export default function Player({
           const ctx = new AudioContextClass();
           const osc = ctx.createOscillator();
           const gain = ctx.createGain();
-          gain.gain.value = 0.001;
+          gain.gain.value = 0.0001;
           osc.connect(gain);
           gain.connect(ctx.destination);
           osc.start();
@@ -137,6 +137,10 @@ export default function Player({
       });
     }
 
+    try {
+      navigator.mediaSession.playbackState = isPlayingLocal ? "playing" : "paused";
+    } catch {}
+
     if (duration > 0 && typeof navigator.mediaSession.setPositionState === "function") {
       try {
         navigator.mediaSession.setPositionState({
@@ -176,7 +180,7 @@ export default function Player({
       } catch {}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state?.title, state?.thumbnail, state?.updatedBy, duration, displayPosition]);
+  }, [state?.title, state?.thumbnail, state?.updatedBy, duration, displayPosition, isPlayingLocal]);
 
   // Initialize YouTube Player
   useEffect(() => {
