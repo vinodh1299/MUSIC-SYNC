@@ -85,28 +85,63 @@ export async function searchYouTube(query: string): Promise<YouTubeSearchResult[
     }));
 }
 
-// Cleans up track title to extract key search terms for recommendations
-function extractSearchTerms(title: string): string {
-  return title
-    .replace(/[\(\[\{].*?[\)\]\}]/g, "") // Remove bracketed text like (Official Video), [HD]
-    .replace(/(official|video|lyric|lyrics|audio|hd|4k|mv|full song)/gi, "")
-    .trim();
+// Parses artist, movie/album, or core title from YouTube video title
+function parseTitleMetadata(rawTitle: string): { songName: string; artistOrAlbum: string } {
+  const parts = rawTitle
+    .replace(/[\(\[\{].*?[\)\]\}]/g, "")
+    .split(/\||-|:|\bfrom\b/i)
+    .map((p) => p.replace(/(official|video|song|lyric|lyrics|audio|hd|4k|mv|full)/gi, "").trim())
+    .filter(Boolean);
+
+  const songName = parts[0] || rawTitle;
+  const artistOrAlbum = parts.slice(1).join(" ") || songName;
+
+  return { songName, artistOrAlbum };
 }
 
-// Fetches recommendation preferences based on previous song title
+// Smart Recommendation Engine: Finds NEW, DIFFERENT songs based on artist/album/genre preferences
 export async function fetchRecommendations(
   currentTitle: string,
-  excludeVideoId?: string
+  excludeVideoIds: string[] = []
 ): Promise<YouTubeSearchResult[]> {
-  const terms = extractSearchTerms(currentTitle);
-  if (!terms) return [];
+  const { songName, artistOrAlbum } = parseTitleMetadata(currentTitle);
+  const excludeSet = new Set(excludeVideoIds);
 
-  const query = `${terms} song`;
+  // Normalize song name to prevent repeating alternative uploads of the exact same song
+  const primaryWord = songName.toLowerCase().split(" ")[0];
+
+  const queries = [
+    `${artistOrAlbum} top songs`,
+    `${songName} similar music songs`,
+    `${artistOrAlbum} hits`,
+  ];
+
+  for (const query of queries) {
+    try {
+      const results = await searchYouTube(query);
+      const candidates = results.filter((item) => {
+        if (excludeSet.has(item.videoId)) return false;
+        // Exclude exact same song title variations
+        const itemLower = item.title.toLowerCase();
+        if (primaryWord && primaryWord.length > 3 && itemLower.includes(primaryWord)) {
+          return false;
+        }
+        return true;
+      });
+
+      if (candidates.length > 0) {
+        return candidates;
+      }
+    } catch (err) {
+      console.warn(`Query "${query}" failed:`, err);
+    }
+  }
+
+  // Fallback: search for top music hits
   try {
-    const results = await searchYouTube(query);
-    return results.filter((item) => item.videoId !== excludeVideoId);
-  } catch (err) {
-    console.warn("Could not fetch recommendations:", err);
+    const fallbackResults = await searchYouTube("popular music songs");
+    return fallbackResults.filter((item) => !excludeSet.has(item.videoId));
+  } catch {
     return [];
   }
 }

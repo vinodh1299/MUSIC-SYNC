@@ -31,6 +31,14 @@ export default function Player({
   const seekingRef = useRef(false);
   const loadedVideoIdRef = useRef<string | null>(null);
   const isHandlingEndRef = useRef(false);
+  const playedHistoryRef = useRef<string[]>([]);
+
+  // Track history of played video IDs
+  useEffect(() => {
+    if (state?.videoId && !playedHistoryRef.current.includes(state.videoId)) {
+      playedHistoryRef.current.push(state.videoId);
+    }
+  }, [state?.videoId]);
 
   // Initialize YouTube Player
   useEffect(() => {
@@ -113,7 +121,10 @@ export default function Player({
       // 2. If no queued items and Autoplay is enabled: find next preference recommendation
       if (autoplay && state?.title) {
         setAutoplayNotice("Finding next song based on your preferences...");
-        const recommendations = await fetchRecommendations(state.title, state.videoId || undefined);
+        const recommendations = await fetchRecommendations(
+          state.title,
+          playedHistoryRef.current
+        );
         if (recommendations.length > 0) {
           const nextSong = recommendations[0];
           setAutoplayNotice(`Autoplay next: ${nextSong.title}`);
@@ -149,16 +160,23 @@ export default function Player({
     return () => document.removeEventListener("visibilitychange", handler);
   }, [isPlayingLocal, onListeningChange]);
 
-  // Tick the displayed position while playing
+  // Tick displayed position & trigger fallback end detection if video reaches end
   useEffect(() => {
     const id = setInterval(() => {
       if (!seekingRef.current && playerRef.current?.getCurrentTime) {
-        setDisplayPosition(playerRef.current.getCurrentTime() || 0);
-        setDuration(playerRef.current.getDuration?.() || 0);
+        const curr = playerRef.current.getCurrentTime() || 0;
+        const dur = playerRef.current.getDuration?.() || 0;
+        setDisplayPosition(curr);
+        setDuration(dur);
+
+        // Fallback end-of-track trigger in case YouTube ENDED event is suppressed
+        if (dur > 0 && curr >= dur - 0.8 && isPlayingLocal && !isHandlingEndRef.current) {
+          handleSongEnded();
+        }
       }
     }, 500);
     return () => clearInterval(id);
-  }, []);
+  }, [isPlayingLocal]);
 
   // Periodic drift-correction heartbeat
   useEffect(() => {
