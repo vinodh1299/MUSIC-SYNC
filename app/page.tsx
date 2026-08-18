@@ -78,7 +78,7 @@ export default function Home() {
       </header>
 
       <section className="stage">
-        <Player selfName={selfName} state={state} onListeningChange={setListening} />
+        <Player selfName={selfName} state={state} queue={queue} onListeningChange={setListening} />
         <SearchPanel selfName={selfName} queue={queue} currentVideoId={state?.videoId} />
       </section>
 

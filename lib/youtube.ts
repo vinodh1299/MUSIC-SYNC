@@ -30,14 +30,15 @@ export type YouTubeSearchResult = {
 };
 
 // Searches YouTube for music videos using the YouTube Data API v3.
-// Requires NEXT_PUBLIC_YT_API_KEY (see README for how to get one).
 export async function searchYouTube(query: string): Promise<YouTubeSearchResult[]> {
   const key = process.env.NEXT_PUBLIC_YT_API_KEY;
-  if (!key) {
+
+  if (!key || !key.startsWith("AIza")) {
     throw new Error(
-      "Missing NEXT_PUBLIC_YT_API_KEY. Add a YouTube Data API v3 key to your environment variables."
+      "Invalid YouTube API Key format. YouTube Data API v3 keys must start with 'AIza...'. Please copy a Google Cloud API key starting with AIza into NEXT_PUBLIC_YT_API_KEY in .env.local."
     );
   }
+
   const params = new URLSearchParams({
     part: "snippet",
     type: "video",
@@ -46,11 +47,31 @@ export async function searchYouTube(query: string): Promise<YouTubeSearchResult[
     q: query,
     key,
   });
+
   const res = await fetch(`https://www.googleapis.com/youtube/v3/search?${params.toString()}`);
   if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`YouTube search failed: ${res.status} ${body}`);
+    const bodyText = await res.text();
+    let parsed: any = {};
+    try {
+      parsed = JSON.parse(bodyText);
+    } catch {}
+
+    if (res.status === 401 || res.status === 403) {
+      const msg = parsed?.error?.message || "";
+      if (msg.includes("API keys are not supported") || msg.includes("UNAUTHENTICATED")) {
+        throw new Error(
+          "Your YouTube API Key is an OAuth token rather than a Google Cloud API Key. Please click '+ Create API Key' in Google Cloud Credentials to get a key starting with 'AIza...'."
+        );
+      }
+      if (msg.includes("blocked") || msg.includes("API_KEY_SERVICE_BLOCKED")) {
+        throw new Error(
+          "YouTube Data API v3 is not enabled on your Google Cloud Project. Please visit https://console.cloud.google.com/apis/library/youtube.googleapis.com and click Enable."
+        );
+      }
+    }
+    throw new Error(`YouTube search error (${res.status}): ${parsed?.error?.message || bodyText}`);
   }
+
   const data = await res.json();
   return (data.items || [])
     .filter((item: any) => item.id?.videoId)
@@ -60,4 +81,31 @@ export async function searchYouTube(query: string): Promise<YouTubeSearchResult[
       channel: item.snippet.channelTitle,
       thumbnail: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url,
     }));
+}
+
+// Cleans up track title to extract key search terms for recommendations
+function extractSearchTerms(title: string): string {
+  return title
+    .replace(/[\(\[\{].*?[\)\]\}]/g, "") // Remove bracketed text like (Official Video), [HD]
+    .replace(/(official|video|lyric|lyrics|audio|hd|4k|mv|full song)/gi, "")
+    .trim();
+}
+
+// Fetches recommendation preferences based on previous song title
+export async function fetchRecommendations(
+  currentTitle: string,
+  excludeVideoId?: string
+): Promise<YouTubeSearchResult[]> {
+  const terms = extractSearchTerms(currentTitle);
+  if (!terms) return [];
+
+  // Search for related songs by the same artist or genre keywords
+  const query = `${terms} song`;
+  try {
+    const results = await searchYouTube(query);
+    return results.filter((item) => item.videoId !== excludeVideoId);
+  } catch (err) {
+    console.warn("Could not fetch recommendations:", err);
+    return [];
+  }
 }

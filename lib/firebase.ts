@@ -10,6 +10,7 @@ import {
   push,
   onDisconnect,
   serverTimestamp,
+  remove,
 } from "firebase/database";
 
 const firebaseConfig = {
@@ -31,7 +32,7 @@ export function getDb() {
   return getDatabase(getFirebaseApp());
 }
 
-export { ref, onValue, set, update, push, onDisconnect, serverTimestamp };
+export { ref, onValue, set, update, push, remove, onDisconnect, serverTimestamp };
 
 // Fixed single room — this app is built for exactly two people.
 export const ROOM_ID = "main";

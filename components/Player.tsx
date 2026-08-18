@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { loadYouTubeIframeApi } from "@/lib/youtube";
-import { PlaybackState, pushState } from "@/lib/room";
+import { loadYouTubeIframeApi, fetchRecommendations, YouTubeSearchResult } from "@/lib/youtube";
+import { PlaybackState, pushState, QueueItem, removeFromQueue } from "@/lib/room";
 
 const DRIFT_TOLERANCE_SEC = 1.5;
 const HEARTBEAT_MS = 10000;
@@ -10,10 +10,12 @@ const HEARTBEAT_MS = 10000;
 export default function Player({
   selfName,
   state,
+  queue,
   onListeningChange,
 }: {
   selfName: string;
   state: PlaybackState | null;
+  queue: QueueItem[];
   onListeningChange: (listening: boolean) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -22,25 +24,42 @@ export default function Player({
   const [displayPosition, setDisplayPosition] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isPlayingLocal, setIsPlayingLocal] = useState(false);
+  const [mode, setMode] = useState<"video" | "compact">("video");
+  const [autoplay, setAutoplay] = useState(true);
+  const [autoplayNotice, setAutoplayNotice] = useState<string | null>(null);
+
   const seekingRef = useRef(false);
   const loadedVideoIdRef = useRef<string | null>(null);
+  const isHandlingEndRef = useRef(false);
 
-  // Initialize the hidden/compact YouTube player once.
+  // Initialize YouTube Player
   useEffect(() => {
     let cancelled = false;
     loadYouTubeIframeApi().then(() => {
       if (cancelled || !containerRef.current) return;
       const YT = (window as any).YT;
       playerRef.current = new YT.Player(containerRef.current, {
-        height: "180",
-        width: "320",
-        playerVars: { controls: 0, disablekb: 1, rel: 0, modestbranding: 1 },
+        height: "100%",
+        width: "100%",
+        playerVars: {
+          controls: 1,
+          disablekb: 0,
+          rel: 0,
+          modestbranding: 1,
+          autoplay: 1,
+          playsinline: 1,
+        },
         events: {
           onReady: () => setReady(true),
           onStateChange: (e: any) => {
             const playing = e.data === YT.PlayerState.PLAYING;
             setIsPlayingLocal(playing);
             onListeningChange(playing && document.visibilityState === "visible");
+
+            // Handle Song Ended -> Autoplay Next Preference or Queue
+            if (e.data === YT.PlayerState.ENDED) {
+              handleSongEnded();
+            }
           },
         },
       });
@@ -52,6 +71,63 @@ export default function Player({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Handle Autoplay / Next Song when current video finishes
+  const handleSongEnded = async () => {
+    if (isHandlingEndRef.current) return;
+    isHandlingEndRef.current = true;
+
+    try {
+      // 1. Check if there are queued items first
+      if (queue && queue.length > 0) {
+        const nextItem = queue[0];
+        setAutoplayNotice(`Playing queued song: ${nextItem.title}`);
+        await removeFromQueue(nextItem.id);
+        await pushState(
+          {
+            videoId: nextItem.videoId,
+            title: nextItem.title,
+            thumbnail: nextItem.thumbnail,
+            isPlaying: true,
+            positionSec: 0,
+          },
+          selfName
+        );
+        setTimeout(() => setAutoplayNotice(null), 4000);
+        return;
+      }
+
+      // 2. If no queued items and Autoplay is enabled: find next preference recommendation
+      if (autoplay && state?.title) {
+        setAutoplayNotice("Finding next song based on your preferences...");
+        const recommendations = await fetchRecommendations(state.title, state.videoId || undefined);
+        if (recommendations.length > 0) {
+          const nextSong = recommendations[0];
+          setAutoplayNotice(`Autoplay next: ${nextSong.title}`);
+          await pushState(
+            {
+              videoId: nextSong.videoId,
+              title: nextSong.title,
+              thumbnail: nextSong.thumbnail,
+              isPlaying: true,
+              positionSec: 0,
+            },
+            selfName
+          );
+          setTimeout(() => setAutoplayNotice(null), 4000);
+        } else {
+          setAutoplayNotice("No matching recommendations found.");
+          setTimeout(() => setAutoplayNotice(null), 3000);
+        }
+      }
+    } catch (err) {
+      console.error("Autoplay transition failed:", err);
+    } finally {
+      setTimeout(() => {
+        isHandlingEndRef.current = false;
+      }, 2000);
+    }
+  };
+
   // Track visibility to fold into "listening" status.
   useEffect(() => {
     const handler = () => onListeningChange(isPlayingLocal && document.visibilityState === "visible");
@@ -59,18 +135,18 @@ export default function Player({
     return () => document.removeEventListener("visibilitychange", handler);
   }, [isPlayingLocal, onListeningChange]);
 
-  // Tick the displayed position while playing (UI only, not written to Firebase).
+  // Tick the displayed position while playing
   useEffect(() => {
     const id = setInterval(() => {
       if (!seekingRef.current && playerRef.current?.getCurrentTime) {
-        setDisplayPosition(playerRef.current.getCurrentTime());
+        setDisplayPosition(playerRef.current.getCurrentTime() || 0);
         setDuration(playerRef.current.getDuration?.() || 0);
       }
     }, 500);
     return () => clearInterval(id);
   }, []);
 
-  // Periodic drift-correction heartbeat: only the last actor broadcasts position.
+  // Periodic drift-correction heartbeat
   useEffect(() => {
     const id = setInterval(() => {
       if (!state || state.updatedBy !== selfName || !state.isPlaying || !playerRef.current?.getCurrentTime) return;
@@ -79,10 +155,10 @@ export default function Player({
     return () => clearInterval(id);
   }, [state, selfName]);
 
-  // Reconcile remote state changes into the local player.
+  // Reconcile remote state changes into local player
   useEffect(() => {
     if (!ready || !state || !playerRef.current) return;
-    if (state.updatedBy === selfName) return; // we already applied our own action locally
+    if (state.updatedBy === selfName) return;
 
     const player = playerRef.current;
     const expected =
@@ -133,20 +209,64 @@ export default function Player({
   };
 
   return (
-    <div className="player">
-      <div className="player-art">
-        {state?.thumbnail ? (
-          <img src={state.thumbnail} alt="" className="player-thumb" />
-        ) : (
-          <div className="player-thumb player-thumb-empty" />
+    <div className={`player-wrapper ${mode === "video" ? "mode-video" : "mode-compact"}`}>
+      {/* Top Bar Controls for Player UI */}
+      <div className="player-toolbar">
+        <div className="player-mode-toggle">
+          <button
+            className={`mode-btn ${mode === "video" ? "active" : ""}`}
+            onClick={() => setMode("video")}
+          >
+            📺 YouTube Video UI
+          </button>
+          <button
+            className={`mode-btn ${mode === "compact" ? "active" : ""}`}
+            onClick={() => setMode("compact")}
+          >
+            🎵 Audio Player UI
+          </button>
+        </div>
+
+        <button
+          className={`autoplay-toggle ${autoplay ? "enabled" : "disabled"}`}
+          onClick={() => setAutoplay(!autoplay)}
+          title="Autoplay next recommended song based on previous song preferences"
+        >
+          Autoplay Preferences: {autoplay ? "ON 🔁" : "OFF ⏸"}
+        </button>
+      </div>
+
+      {autoplayNotice && <div className="autoplay-banner">{autoplayNotice}</div>}
+
+      {/* Main YouTube Video Interface Screen */}
+      <div className="youtube-video-container">
+        <div className="youtube-player-frame" ref={containerRef} />
+        {!state?.videoId && (
+          <div className="player-placeholder">
+            <div className="placeholder-icon">📺</div>
+            <p className="placeholder-title">No Video Playing Yet</p>
+            <p className="placeholder-sub">Search for a song or music video below to start watching & listening together.</p>
+          </div>
         )}
       </div>
 
+      {/* Synchronized Control Bar */}
       <div className="player-body">
-        <p className="player-title">{state?.title || "Nothing playing yet"}</p>
-        <p className="player-sub">
-          {state?.updatedBy ? `${state.updatedBy} started this` : "Search below to start listening"}
-        </p>
+        <div className="player-meta-row">
+          <div className="player-art-mini">
+            {state?.thumbnail ? (
+              <img src={state.thumbnail} alt="" className="player-thumb" />
+            ) : (
+              <div className="player-thumb player-thumb-empty" />
+            )}
+          </div>
+          <div className="player-meta-text">
+            <p className="player-title">{state?.title || "Nothing playing yet"}</p>
+            <p className="player-sub">
+              {state?.updatedBy ? `Synced by ${state.updatedBy}` : "Search below to start"}
+            </p>
+          </div>
+        </div>
 
         <div className="player-transport">
           <button
@@ -180,9 +300,6 @@ export default function Player({
           <span className="player-time">{fmt(duration)}</span>
         </div>
       </div>
-
-      {/* The actual YouTube iframe — kept small; audio is what matters. */}
-      <div className="player-frame" ref={containerRef} />
     </div>
   );
 }

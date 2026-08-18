@@ -1,6 +1,6 @@
 "use client";
 
-import { getDb, ref, onValue, set, update, push, onDisconnect, serverTimestamp, ROOM_ID } from "./firebase";
+import { getDb, ref, onValue, set, update, push, remove, onDisconnect, serverTimestamp, ROOM_ID } from "./firebase";
 
 export type PlaybackState = {
   videoId: string | null;
@@ -74,6 +74,10 @@ export async function pushState(partial: Partial<PlaybackState>, actor: string) 
 
 export async function addToQueue(item: Omit<QueueItem, "id">) {
   await push(queueRef(), item);
+}
+
+export async function removeFromQueue(id: string) {
+  await remove(ref(getDb(), `rooms/${ROOM_ID}/queue/${id}`));
 }
 
 export async function sendChatMessage(sender: string, text: string) {
