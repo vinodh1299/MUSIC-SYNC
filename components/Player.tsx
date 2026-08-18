@@ -21,6 +21,7 @@ export default function Player({
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
   const audioCtxRef = useRef<any>(null);
+  const latestStateRef = useRef<PlaybackState | null>(state);
 
   const [ready, setReady] = useState(false);
   const [displayPosition, setDisplayPosition] = useState(0);
@@ -35,6 +36,11 @@ export default function Player({
   const loadedVideoIdRef = useRef<string | null>(null);
   const isHandlingEndRef = useRef(false);
   const playedHistoryRef = useRef<string[]>([]);
+
+  // Keep latest state ref up to date for event handlers
+  useEffect(() => {
+    latestStateRef.current = state;
+  }, [state]);
 
   // Track history of played video IDs
   useEffect(() => {
@@ -175,11 +181,23 @@ export default function Player({
         events: {
           onReady: () => setReady(true),
           onStateChange: (e: any) => {
-            const playing = e.data === YT.PlayerState.PLAYING;
-            setIsPlayingLocal(playing);
-            onListeningChange(playing);
+            const isPlaying = e.data === YT.PlayerState.PLAYING;
+            const isBuffering = e.data === YT.PlayerState.BUFFERING;
 
-            if (playing) {
+            // iOS WebKit Guard: If YouTube player attempts to unpause/buffer while room is PAUSED, force pause!
+            if (latestStateRef.current && !latestStateRef.current.isPlaying) {
+              if (isPlaying || isBuffering) {
+                playerRef.current?.pauseVideo?.();
+                setIsPlayingLocal(false);
+                onListeningChange(false);
+                return;
+              }
+            }
+
+            setIsPlayingLocal(isPlaying);
+            onListeningChange(isPlaying);
+
+            if (isPlaying) {
               setNeedsGestureToSync(false);
             }
 
@@ -372,7 +390,7 @@ export default function Player({
     if (!playerRef.current) return;
     playerRef.current.seekTo(seconds, true);
     setDisplayPosition(seconds);
-    pushState({ positionSec: seconds }, selfName);
+    pushState({ isPlaying: true, positionSec: seconds }, selfName);
   };
 
   const fmt = (s: number) => {
