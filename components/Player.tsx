@@ -21,6 +21,8 @@ export default function Player({
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
   const audioCtxRef = useRef<any>(null);
+  const latestStateRef = useRef<PlaybackState | null>(state);
+  const isReconcilingRef = useRef(false);
 
   const [ready, setReady] = useState(false);
   const [displayPosition, setDisplayPosition] = useState(0);
@@ -35,6 +37,11 @@ export default function Player({
   const loadedVideoIdRef = useRef<string | null>(null);
   const isHandlingEndRef = useRef(false);
   const playedHistoryRef = useRef<string[]>([]);
+
+  // Keep latest state ref up to date for event handlers
+  useEffect(() => {
+    latestStateRef.current = state;
+  }, [state]);
 
   // Track history of played video IDs
   useEffect(() => {
@@ -176,11 +183,28 @@ export default function Player({
           onReady: () => setReady(true),
           onStateChange: (e: any) => {
             const playing = e.data === YT.PlayerState.PLAYING;
+            const paused = e.data === YT.PlayerState.PAUSED;
+
             setIsPlayingLocal(playing);
             onListeningChange(playing);
 
             if (playing) {
               setNeedsGestureToSync(false);
+            }
+
+            // Sync user clicks directly on the YouTube video player iframe to Firebase
+            if (!isReconcilingRef.current && ready) {
+              if (paused && latestStateRef.current?.isPlaying) {
+                pushState(
+                  { isPlaying: false, positionSec: playerRef.current?.getCurrentTime?.() ?? 0 },
+                  selfName
+                );
+              } else if (playing && latestStateRef.current && !latestStateRef.current.isPlaying) {
+                pushState(
+                  { isPlaying: true, positionSec: playerRef.current?.getCurrentTime?.() ?? 0 },
+                  selfName
+                );
+              }
             }
 
             // Handle Song Ended -> Autoplay Next Preference or Queue
@@ -306,6 +330,8 @@ export default function Player({
     const player = playerRef.current;
     const expected = getExpectedPosition();
 
+    isReconcilingRef.current = true;
+
     // 1. Whenever video ID changes, load or cue it!
     if (state.videoId && state.videoId !== loadedVideoIdRef.current) {
       loadedVideoIdRef.current = state.videoId;
@@ -320,13 +346,14 @@ export default function Player({
         if (state.isPlaying && player.getPlayerState?.() !== 1) {
           setNeedsGestureToSync(true);
         }
+        isReconcilingRef.current = false;
       }, 1000);
       return;
     }
 
     // 2. Playback State Synchronization
     const playerState = typeof player.getPlayerState === "function" ? player.getPlayerState() : -1;
-    const isCurrentlyPlaying = playerState === 1 || playerState === 3; // 1 = PLAYING, 3 = BUFFERING
+    const isCurrentlyPlaying = playerState === 1 || playerState === 3;
 
     if (state.isPlaying) {
       // Room is PLAYING
@@ -345,6 +372,10 @@ export default function Player({
         player.pauseVideo?.();
       }
     }
+
+    setTimeout(() => {
+      isReconcilingRef.current = false;
+    }, 400);
   }, [state, ready]);
 
   const togglePlay = () => {
