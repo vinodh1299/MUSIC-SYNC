@@ -145,3 +145,34 @@ export async function fetchRecommendations(
     return [];
   }
 }
+
+// Resolves a direct playable HTML5 audio stream URL for a given YouTube video ID
+export async function fetchAudioStream(videoId: string): Promise<string | null> {
+  const endpoints = [
+    `https://api.piped.video/streams/${videoId}`,
+    `https://pipedapi.kavin.rocks/streams/${videoId}`,
+    `https://invidious.nerdvpn.de/api/v1/videos/${videoId}`,
+  ];
+
+  for (const endpoint of endpoints) {
+    try {
+      const res = await fetch(endpoint);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.audioStreams) && data.audioStreams.length > 0) {
+          const bestStream = data.audioStreams.find((s: any) => s.mimeType?.includes("audio/mp4")) || data.audioStreams[0];
+          if (bestStream?.url) return bestStream.url;
+        }
+        if (Array.isArray(data.adaptiveFormats)) {
+          const audioFormats = data.adaptiveFormats.filter((f: any) => f.type?.includes("audio"));
+          if (audioFormats.length > 0) {
+            return audioFormats[0].url;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(`Audio stream endpoint ${endpoint} failed:`, err);
+    }
+  }
+  return null;
+}
