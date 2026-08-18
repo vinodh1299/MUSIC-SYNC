@@ -351,6 +351,64 @@ input {
   margin: 0;
 }
 
+/* Late Joiner Sync Overlay */
+.sync-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(11, 16, 38, 0.85);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  cursor: pointer;
+  animation: fadeIn 0.25s ease;
+}
+
+.sync-card {
+  background: var(--bg-elev-2);
+  border: 1px solid var(--thread);
+  padding: 24px;
+  border-radius: 18px;
+  text-align: center;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  max-width: 320px;
+}
+
+.sync-icon {
+  font-size: 32px;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.sync-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  margin: 0 0 4px;
+  color: var(--text);
+}
+
+.sync-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 16px;
+}
+
+.sync-btn {
+  background: var(--thread);
+  color: var(--bg);
+  border: none;
+  padding: 10px 22px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 14px;
+  transition: transform 0.15s ease;
+}
+
+.sync-btn:hover {
+  transform: scale(1.04);
+}
+
 /* Synchronized Player Bar */
 .player-body {
   display: flex;

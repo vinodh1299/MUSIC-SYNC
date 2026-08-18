@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { loadYouTubeIframeApi, fetchRecommendations } from "@/lib/youtube";
 import { PlaybackState, pushState, QueueItem, removeFromQueue } from "@/lib/room";
 
-const DRIFT_TOLERANCE_SEC = 1.5;
-const HEARTBEAT_MS = 10000;
+const DRIFT_TOLERANCE_SEC = 0.6;
+const HEARTBEAT_MS = 3000;
 
 export default function Player({
   selfName,
@@ -27,6 +27,7 @@ export default function Player({
   const [mode, setMode] = useState<"video" | "compact">("video");
   const [autoplay, setAutoplay] = useState(true);
   const [autoplayNotice, setAutoplayNotice] = useState<string | null>(null);
+  const [needsGestureToSync, setNeedsGestureToSync] = useState(false);
 
   const seekingRef = useRef(false);
   const loadedVideoIdRef = useRef<string | null>(null);
@@ -39,6 +40,29 @@ export default function Player({
       playedHistoryRef.current.push(state.videoId);
     }
   }, [state?.videoId]);
+
+  // Calculate live expected position taking into account network latency
+  const getExpectedPosition = (): number => {
+    if (!state) return 0;
+    const elapsed =
+      state.isPlaying && typeof state.updatedAt === "number"
+        ? Math.max(0, (Date.now() - state.updatedAt) / 1000)
+        : 0;
+    return state.positionSec + elapsed;
+  };
+
+  // Helper to join live playback with gesture activation
+  const joinLiveSync = () => {
+    if (!playerRef.current || !state) return;
+    const expected = getExpectedPosition();
+    playerRef.current.seekTo(expected, true);
+    if (state.isPlaying) {
+      playerRef.current.playVideo();
+    } else {
+      playerRef.current.pauseVideo();
+    }
+    setNeedsGestureToSync(false);
+  };
 
   // Initialize YouTube Player
   useEffect(() => {
@@ -68,6 +92,10 @@ export default function Player({
             const playing = e.data === YT.PlayerState.PLAYING;
             setIsPlayingLocal(playing);
             onListeningChange(playing && document.visibilityState === "visible");
+
+            if (playing) {
+              setNeedsGestureToSync(false);
+            }
 
             // Handle Song Ended -> Autoplay Next Preference or Queue
             if (e.data === YT.PlayerState.ENDED) {
@@ -178,7 +206,7 @@ export default function Player({
     return () => clearInterval(id);
   }, [isPlayingLocal]);
 
-  // Periodic drift-correction heartbeat
+  // High-frequency 3s drift-correction heartbeat
   useEffect(() => {
     const id = setInterval(() => {
       if (!state || state.updatedBy !== selfName || !state.isPlaying || !playerRef.current?.getCurrentTime) return;
@@ -192,11 +220,7 @@ export default function Player({
     if (!ready || !state || !playerRef.current) return;
 
     const player = playerRef.current;
-    const expected =
-      state.positionSec +
-      (state.isPlaying && typeof state.updatedAt === "number"
-        ? Math.max(0, (Date.now() - state.updatedAt) / 1000)
-        : 0);
+    const expected = getExpectedPosition();
 
     // Whenever video ID changes (for self or partner), load it into YouTube player!
     if (state.videoId && state.videoId !== loadedVideoIdRef.current) {
@@ -206,26 +230,39 @@ export default function Player({
       } else {
         player.cueVideoById(state.videoId, expected);
       }
+
+      // Check if browser blocked autoplay for late joiner
+      setTimeout(() => {
+        if (state.isPlaying && player.getPlayerState?.() !== 1) {
+          setNeedsGestureToSync(true);
+        }
+      }, 1000);
       return;
     }
 
-    // Skip position adjustments triggered by self
-    if (state.updatedBy === selfName) return;
+    // Handle Play / Pause / Seek events from partner instantly!
+    if (state.updatedBy !== selfName) {
+      const current = player.getCurrentTime?.() ?? 0;
+      if (Math.abs(current - expected) > DRIFT_TOLERANCE_SEC) {
+        player.seekTo(expected, true);
+      }
 
-    const current = player.getCurrentTime?.() ?? 0;
-    if (Math.abs(current - expected) > DRIFT_TOLERANCE_SEC) {
-      player.seekTo(expected, true);
+      if (state.isPlaying) {
+        player.playVideo?.();
+      } else {
+        player.pauseVideo?.();
+      }
     }
-
-    if (state.isPlaying) player.playVideo?.();
-    else player.pauseVideo?.();
   }, [state, ready, selfName]);
 
   const togglePlay = () => {
     if (!playerRef.current) return;
     const nextPlaying = !isPlayingLocal;
-    if (nextPlaying) playerRef.current.playVideo();
-    else playerRef.current.pauseVideo();
+    if (nextPlaying) {
+      playerRef.current.playVideo();
+    } else {
+      playerRef.current.pauseVideo();
+    }
     pushState(
       { isPlaying: nextPlaying, positionSec: playerRef.current.getCurrentTime?.() ?? 0 },
       selfName
@@ -286,6 +323,20 @@ export default function Player({
             <p className="placeholder-sub">Search for a song or music video below to start watching & listening together.</p>
           </div>
         )}
+
+        {/* Late Joiner / Autoplay Policy Sync Overlay */}
+        {needsGestureToSync && state?.isPlaying && (
+          <div className="sync-overlay" onClick={joinLiveSync}>
+            <div className="sync-card">
+              <span className="sync-icon">⚡</span>
+              <p className="sync-title">
+                {state.updatedBy ? `${state.updatedBy} is listening now!` : "Song is playing live!"}
+              </p>
+              <p className="sync-sub">Click anywhere to jump in and listen at {fmt(getExpectedPosition())}</p>
+              <button className="sync-btn">▶ Join Live Sync</button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Synchronized Control Bar */}
@@ -301,7 +352,7 @@ export default function Player({
           <div className="player-meta-text">
             <p className="player-title">{state?.title || "Nothing playing yet"}</p>
             <p className="player-sub">
-              {state?.updatedBy ? `Synced by ${state.updatedBy}` : "Search below to start"}
+              {state?.updatedBy ? `Synced with ${state.updatedBy}` : "Search below to start"}
             </p>
           </div>
         </div>
