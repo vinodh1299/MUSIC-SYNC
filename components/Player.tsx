@@ -21,8 +21,6 @@ export default function Player({
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
   const audioCtxRef = useRef<any>(null);
-  const latestStateRef = useRef<PlaybackState | null>(state);
-  const lastCommandRef = useRef<"play" | "pause" | null>(null);
 
   const [ready, setReady] = useState(false);
   const [displayPosition, setDisplayPosition] = useState(0);
@@ -37,11 +35,6 @@ export default function Player({
   const loadedVideoIdRef = useRef<string | null>(null);
   const isHandlingEndRef = useRef(false);
   const playedHistoryRef = useRef<string[]>([]);
-
-  // Keep latest state ref up to date for event handlers
-  useEffect(() => {
-    latestStateRef.current = state;
-  }, [state]);
 
   // Track history of played video IDs
   useEffect(() => {
@@ -92,10 +85,8 @@ export default function Player({
     const expected = getExpectedPosition();
     playerRef.current.seekTo(expected, true);
     if (state.isPlaying) {
-      lastCommandRef.current = "play";
       playerRef.current.playVideo();
     } else {
-      lastCommandRef.current = "pause";
       playerRef.current.pauseVideo();
     }
     setNeedsGestureToSync(false);
@@ -131,17 +122,11 @@ export default function Player({
     try {
       navigator.mediaSession.setActionHandler("play", () => {
         initBackgroundAudioContext();
-        if (playerRef.current) {
-          lastCommandRef.current = "play";
-          playerRef.current.playVideo?.();
-        }
+        if (playerRef.current) playerRef.current.playVideo?.();
         pushState({ isPlaying: true, positionSec: playerRef.current?.getCurrentTime?.() ?? 0 }, selfName);
       });
       navigator.mediaSession.setActionHandler("pause", () => {
-        if (playerRef.current) {
-          lastCommandRef.current = "pause";
-          playerRef.current.pauseVideo?.();
-        }
+        if (playerRef.current) playerRef.current.pauseVideo?.();
         pushState({ isPlaying: false, positionSec: playerRef.current?.getCurrentTime?.() ?? 0 }, selfName);
       });
       navigator.mediaSession.setActionHandler("nexttrack", () => {
@@ -190,24 +175,11 @@ export default function Player({
         events: {
           onReady: () => setReady(true),
           onStateChange: (e: any) => {
-            const isPlaying = e.data === YT.PlayerState.PLAYING;
-            const isBuffering = e.data === YT.PlayerState.BUFFERING;
+            const playing = e.data === YT.PlayerState.PLAYING;
+            setIsPlayingLocal(playing);
+            onListeningChange(playing);
 
-            // iOS WebKit Guard: If YouTube player attempts to unpause/buffer while room is PAUSED, force pause!
-            if (latestStateRef.current && !latestStateRef.current.isPlaying) {
-              if (isPlaying || isBuffering) {
-                lastCommandRef.current = "pause";
-                playerRef.current?.pauseVideo?.();
-                setIsPlayingLocal(false);
-                onListeningChange(false);
-                return;
-              }
-            }
-
-            setIsPlayingLocal(isPlaying);
-            onListeningChange(isPlaying);
-
-            if (isPlaying) {
+            if (playing) {
               setNeedsGestureToSync(false);
             }
 
@@ -318,7 +290,7 @@ export default function Player({
     return () => clearInterval(id);
   }, [isPlayingLocal]);
 
-  // High-frequency drift-correction heartbeat when playing
+  // Periodic position heartbeat when playing
   useEffect(() => {
     const id = setInterval(() => {
       if (!state || state.updatedBy !== selfName || !state.isPlaying || !playerRef.current?.getCurrentTime) return;
@@ -327,17 +299,16 @@ export default function Player({
     return () => clearInterval(id);
   }, [state, selfName]);
 
-  // Single-execution state command reconciliation to eliminate duplicate pause/play calls
+  // Clean 2-Way Synchronization: Reconcile Firebase state into local YouTube player instance
   useEffect(() => {
     if (!ready || !state || !playerRef.current) return;
 
     const player = playerRef.current;
     const expected = getExpectedPosition();
 
-    // Whenever video ID changes, load or cue it!
+    // 1. Whenever video ID changes, load or cue it!
     if (state.videoId && state.videoId !== loadedVideoIdRef.current) {
       loadedVideoIdRef.current = state.videoId;
-      lastCommandRef.current = state.isPlaying ? "play" : "pause";
       if (state.isPlaying) {
         player.loadVideoById(state.videoId, expected);
       } else {
@@ -353,40 +324,37 @@ export default function Player({
       return;
     }
 
-    // Handle Play vs Pause state commands strictly ONCE per state change
-    if (state.isPlaying) {
-      const current = player.getCurrentTime?.() ?? 0;
-      const playerState = player.getPlayerState?.();
-      const isPlaying = playerState === 1;
+    // 2. Playback State Synchronization
+    const playerState = typeof player.getPlayerState === "function" ? player.getPlayerState() : -1;
+    const isCurrentlyPlaying = playerState === 1 || playerState === 3; // 1 = PLAYING, 3 = BUFFERING
 
-      if (lastCommandRef.current !== "play" || !isPlaying) {
-        lastCommandRef.current = "play";
-        if (Math.abs(current - expected) > DRIFT_TOLERANCE_SEC) {
-          player.seekTo(expected, true);
-        }
+    if (state.isPlaying) {
+      // Room is PLAYING
+      if (!isCurrentlyPlaying) {
+        player.seekTo?.(expected, true);
         player.playVideo?.();
-      } else if (Math.abs(current - expected) > DRIFT_TOLERANCE_SEC) {
-        player.seekTo(expected, true);
+      } else {
+        const current = player.getCurrentTime?.() ?? 0;
+        if (Math.abs(current - expected) > DRIFT_TOLERANCE_SEC) {
+          player.seekTo?.(expected, true);
+        }
       }
     } else {
-      // When state is PAUSED: issue pause command ONCE and stay completely silent!
-      if (lastCommandRef.current !== "pause") {
-        lastCommandRef.current = "pause";
+      // Room is PAUSED
+      if (isCurrentlyPlaying) {
         player.pauseVideo?.();
       }
     }
-  }, [state, ready, selfName]);
+  }, [state, ready]);
 
   const togglePlay = () => {
     initBackgroundAudioContext();
     if (!playerRef.current) return;
 
     const player = playerRef.current;
-    const playerState = player.getPlayerState?.();
-    const currentlyPlaying = playerState === 1 || isPlayingLocal;
-    const nextPlaying = !currentlyPlaying;
-
-    lastCommandRef.current = nextPlaying ? "play" : "pause";
+    const playerState = typeof player.getPlayerState === "function" ? player.getPlayerState() : -1;
+    const isCurrentlyPlaying = playerState === 1 || playerState === 3 || isPlayingLocal;
+    const nextPlaying = !isCurrentlyPlaying;
 
     if (nextPlaying) {
       player.playVideo?.();
@@ -403,7 +371,6 @@ export default function Player({
   const seekTo = (seconds: number) => {
     initBackgroundAudioContext();
     if (!playerRef.current) return;
-    lastCommandRef.current = "play";
     playerRef.current.seekTo(seconds, true);
     setDisplayPosition(seconds);
     pushState({ isPlaying: true, positionSec: seconds }, selfName);
