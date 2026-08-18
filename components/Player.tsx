@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { loadYouTubeIframeApi, fetchRecommendations } from "@/lib/youtube";
+import { loadYouTubeIframeApi, fetchRecommendations, fetchAudioStream } from "@/lib/youtube";
 import { PlaybackState, pushState, QueueItem, removeFromQueue } from "@/lib/room";
 
 const DRIFT_TOLERANCE_SEC = 1.0;
@@ -20,6 +20,7 @@ export default function Player({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
+  const htmlAudioRef = useRef<HTMLAudioElement | null>(null);
   const audioCtxRef = useRef<any>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const latestStateRef = useRef<PlaybackState | null>(state);
@@ -34,6 +35,7 @@ export default function Player({
   const [autoplay, setAutoplay] = useState(true);
   const [autoplayNotice, setAutoplayNotice] = useState<string | null>(null);
   const [needsGestureToSync, setNeedsGestureToSync] = useState(false);
+  const [audioStreamUrl, setAudioStreamUrl] = useState<string | null>(null);
 
   const seekingRef = useRef(false);
   const loadedVideoIdRef = useRef<string | null>(null);
@@ -50,6 +52,23 @@ export default function Player({
     if (state?.videoId && !playedHistoryRef.current.includes(state.videoId)) {
       playedHistoryRef.current.push(state.videoId);
     }
+  }, [state?.videoId]);
+
+  // Fetch direct playable HTML5 audio stream URL for mobile background playback
+  useEffect(() => {
+    if (!state?.videoId) {
+      setAudioStreamUrl(null);
+      return;
+    }
+    let cancelled = false;
+    fetchAudioStream(state.videoId).then((url) => {
+      if (!cancelled && url) {
+        setAudioStreamUrl(url);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [state?.videoId]);
 
   // Web Audio MediaStreamDestination Bridge for iOS Screen Lock Playback
@@ -87,7 +106,7 @@ export default function Player({
     }
   };
 
-  // Sync background HTML5 audio element playing state with YouTube player
+  // Sync background HTML5 audio element playing state
   useEffect(() => {
     if (audioRef.current) {
       if (isPlayingLocal) {
@@ -111,14 +130,24 @@ export default function Player({
   // Auto-resync to exact live position when returning from iOS screen lock or background tab
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible" && playerRef.current && state) {
+      if (document.visibilityState === "visible" && state) {
         initBackgroundAudioContext();
         const expected = getExpectedPosition();
-        if (state.isPlaying) {
-          playerRef.current.seekTo?.(expected, true);
-          playerRef.current.playVideo?.();
-        } else {
-          playerRef.current.pauseVideo?.();
+        if (playerRef.current) {
+          if (state.isPlaying) {
+            playerRef.current.seekTo?.(expected, true);
+            playerRef.current.playVideo?.();
+          } else {
+            playerRef.current.pauseVideo?.();
+          }
+        }
+        if (htmlAudioRef.current) {
+          if (state.isPlaying) {
+            htmlAudioRef.current.currentTime = expected;
+            htmlAudioRef.current.play().catch(() => {});
+          } else {
+            htmlAudioRef.current.pause();
+          }
         }
       }
     };
@@ -131,13 +160,17 @@ export default function Player({
   // Helper to join live playback with gesture activation
   const joinLiveSync = () => {
     initBackgroundAudioContext();
-    if (!playerRef.current || !state) return;
+    if (!state) return;
     const expected = getExpectedPosition();
-    playerRef.current.seekTo(expected, true);
-    if (state.isPlaying) {
-      playerRef.current.playVideo();
-    } else {
-      playerRef.current.pauseVideo();
+    if (playerRef.current) {
+      playerRef.current.seekTo(expected, true);
+      if (state.isPlaying) playerRef.current.playVideo();
+      else playerRef.current.pauseVideo();
+    }
+    if (htmlAudioRef.current) {
+      htmlAudioRef.current.currentTime = expected;
+      if (state.isPlaying) htmlAudioRef.current.play().catch(() => {});
+      else htmlAudioRef.current.pause();
     }
     setNeedsGestureToSync(false);
   };
@@ -177,11 +210,13 @@ export default function Player({
       navigator.mediaSession.setActionHandler("play", () => {
         initBackgroundAudioContext();
         if (playerRef.current) playerRef.current.playVideo?.();
-        pushState({ isPlaying: true, positionSec: playerRef.current?.getCurrentTime?.() ?? 0 }, selfName);
+        if (htmlAudioRef.current) htmlAudioRef.current.play().catch(() => {});
+        pushState({ isPlaying: true, positionSec: playerRef.current?.getCurrentTime?.() ?? htmlAudioRef.current?.currentTime ?? 0 }, selfName);
       });
       navigator.mediaSession.setActionHandler("pause", () => {
         if (playerRef.current) playerRef.current.pauseVideo?.();
-        pushState({ isPlaying: false, positionSec: playerRef.current?.getCurrentTime?.() ?? 0 }, selfName);
+        if (htmlAudioRef.current) htmlAudioRef.current.pause();
+        pushState({ isPlaying: false, positionSec: playerRef.current?.getCurrentTime?.() ?? htmlAudioRef.current?.currentTime ?? 0 }, selfName);
       });
       navigator.mediaSession.setActionHandler("nexttrack", () => {
         handleSongEnded();
@@ -349,110 +384,119 @@ export default function Player({
   // Tick displayed position & trigger fallback end detection if video reaches end
   useEffect(() => {
     const id = setInterval(() => {
-      if (!seekingRef.current && playerRef.current?.getCurrentTime) {
-        const curr = playerRef.current.getCurrentTime() || 0;
-        const dur = playerRef.current.getDuration?.() || 0;
+      if (!seekingRef.current) {
+        let curr = 0;
+        let dur = 0;
+        if (htmlAudioRef.current && mode === "compact" && audioStreamUrl) {
+          curr = htmlAudioRef.current.currentTime || 0;
+          dur = htmlAudioRef.current.duration || 0;
+        } else if (playerRef.current?.getCurrentTime) {
+          curr = playerRef.current.getCurrentTime() || 0;
+          dur = playerRef.current.getDuration?.() || 0;
+        }
         setDisplayPosition(curr);
         setDuration(dur);
 
-        // Fallback end-of-track trigger in case YouTube ENDED event is suppressed
+        // Fallback end-of-track trigger in case ENDED event is suppressed
         if (dur > 0 && curr >= dur - 0.8 && isPlayingLocal && !isHandlingEndRef.current) {
           handleSongEnded();
         }
       }
     }, 500);
     return () => clearInterval(id);
-  }, [isPlayingLocal]);
+  }, [isPlayingLocal, mode, audioStreamUrl]);
 
   // Periodic position heartbeat when playing
   useEffect(() => {
     const id = setInterval(() => {
-      if (!state || state.updatedBy !== selfName || !state.isPlaying || !playerRef.current?.getCurrentTime) return;
-      pushState({ positionSec: playerRef.current.getCurrentTime() }, selfName);
+      if (!state || state.updatedBy !== selfName || !state.isPlaying) return;
+      const curr = playerRef.current?.getCurrentTime?.() ?? htmlAudioRef.current?.currentTime ?? 0;
+      pushState({ positionSec: curr }, selfName);
     }, HEARTBEAT_MS);
     return () => clearInterval(id);
   }, [state, selfName]);
 
-  // Clean 2-Way Synchronization: Reconcile Firebase state into local YouTube player instance
+  // Clean 2-Way Synchronization: Reconcile Firebase state into local YouTube player instance & HTML5 Audio
   useEffect(() => {
-    if (!ready || !state || !playerRef.current) return;
+    if (!ready || !state) return;
 
-    const player = playerRef.current;
     const expected = getExpectedPosition();
-
     isReconcilingRef.current = true;
 
-    // 1. Whenever video ID changes, load or cue it!
-    if (state.videoId && state.videoId !== loadedVideoIdRef.current) {
-      loadedVideoIdRef.current = state.videoId;
-      if (state.isPlaying) {
-        player.loadVideoById(state.videoId, expected);
-      } else {
-        player.cueVideoById(state.videoId, expected);
-      }
-
-      // Check if browser blocked autoplay for late joiner
-      setTimeout(() => {
-        if (state.isPlaying && player.getPlayerState?.() !== 1) {
-          setNeedsGestureToSync(true);
+    // 1. YouTube IFrame Player Reconciliation
+    if (playerRef.current) {
+      const player = playerRef.current;
+      if (state.videoId && state.videoId !== loadedVideoIdRef.current) {
+        loadedVideoIdRef.current = state.videoId;
+        if (state.isPlaying) {
+          player.loadVideoById(state.videoId, expected);
+        } else {
+          player.cueVideoById(state.videoId, expected);
         }
-        isReconcilingRef.current = false;
-      }, 1000);
-      return;
+      } else {
+        const playerState = typeof player.getPlayerState === "function" ? player.getPlayerState() : -1;
+        const isCurrentlyPlaying = playerState === 1 || playerState === 3;
+        if (state.isPlaying) {
+          if (!isCurrentlyPlaying) {
+            player.seekTo?.(expected, true);
+            player.playVideo?.();
+          } else {
+            const current = player.getCurrentTime?.() ?? 0;
+            if (Math.abs(current - expected) > DRIFT_TOLERANCE_SEC) {
+              player.seekTo?.(expected, true);
+            }
+          }
+        } else {
+          if (isCurrentlyPlaying) {
+            player.pauseVideo?.();
+          }
+        }
+      }
     }
 
-    // 2. Playback State Synchronization
-    const playerState = typeof player.getPlayerState === "function" ? player.getPlayerState() : -1;
-    const isCurrentlyPlaying = playerState === 1 || playerState === 3;
-
-    if (state.isPlaying) {
-      // Room is PLAYING
-      if (!isCurrentlyPlaying) {
-        player.seekTo?.(expected, true);
-        player.playVideo?.();
-      } else {
-        const current = player.getCurrentTime?.() ?? 0;
-        if (Math.abs(current - expected) > DRIFT_TOLERANCE_SEC) {
-          player.seekTo?.(expected, true);
+    // 2. HTML5 Audio Element Reconciliation (for Mobile Background Audio across apps/locks)
+    if (htmlAudioRef.current && audioStreamUrl) {
+      const audio = htmlAudioRef.current;
+      if (state.isPlaying) {
+        if (audio.paused) {
+          audio.currentTime = expected;
+          audio.play().catch(() => {});
+        } else if (Math.abs(audio.currentTime - expected) > DRIFT_TOLERANCE_SEC) {
+          audio.currentTime = expected;
         }
-      }
-    } else {
-      // Room is PAUSED
-      if (isCurrentlyPlaying) {
-        player.pauseVideo?.();
+      } else {
+        if (!audio.paused) {
+          audio.pause();
+        }
       }
     }
 
     setTimeout(() => {
       isReconcilingRef.current = false;
     }, 400);
-  }, [state, ready]);
+  }, [state, ready, audioStreamUrl]);
 
   const togglePlay = () => {
     initBackgroundAudioContext();
-    if (!playerRef.current) return;
+    const nextPlaying = !isPlayingLocal;
 
-    const player = playerRef.current;
-    const playerState = typeof player.getPlayerState === "function" ? player.getPlayerState() : -1;
-    const isCurrentlyPlaying = playerState === 1 || playerState === 3 || isPlayingLocal;
-    const nextPlaying = !isCurrentlyPlaying;
-
-    if (nextPlaying) {
-      player.playVideo?.();
-    } else {
-      player.pauseVideo?.();
+    if (mode === "compact" && htmlAudioRef.current && audioStreamUrl) {
+      if (nextPlaying) htmlAudioRef.current.play().catch(() => {});
+      else htmlAudioRef.current.pause();
+    }
+    if (playerRef.current) {
+      if (nextPlaying) playerRef.current.playVideo?.();
+      else playerRef.current.pauseVideo?.();
     }
 
-    pushState(
-      { isPlaying: nextPlaying, positionSec: player.getCurrentTime?.() ?? 0 },
-      selfName
-    );
+    const currentPos = playerRef.current?.getCurrentTime?.() ?? htmlAudioRef.current?.currentTime ?? 0;
+    pushState({ isPlaying: nextPlaying, positionSec: currentPos }, selfName);
   };
 
   const seekTo = (seconds: number) => {
     initBackgroundAudioContext();
-    if (!playerRef.current) return;
-    playerRef.current.seekTo(seconds, true);
+    if (playerRef.current) playerRef.current.seekTo(seconds, true);
+    if (htmlAudioRef.current) htmlAudioRef.current.currentTime = seconds;
     setDisplayPosition(seconds);
     pushState({ isPlaying: true, positionSec: seconds }, selfName);
   };
@@ -466,6 +510,19 @@ export default function Player({
 
   return (
     <div className={`player-wrapper ${mode === "video" ? "mode-video" : "mode-compact"}`}>
+      {/* Hidden Native HTML5 Audio Element for Unrestricted Background Mobile Audio */}
+      {audioStreamUrl && (
+        <audio
+          ref={htmlAudioRef}
+          src={audioStreamUrl}
+          playsInline
+          preload="auto"
+          onPlay={() => setIsPlayingLocal(true)}
+          onPause={() => setIsPlayingLocal(false)}
+          onEnded={handleSongEnded}
+        />
+      )}
+
       {/* Top Bar Controls for Player UI */}
       <div className="player-toolbar">
         <div className="player-mode-toggle">
@@ -479,7 +536,7 @@ export default function Player({
             className={`mode-btn ${mode === "compact" ? "active" : ""}`}
             onClick={() => setMode("compact")}
           >
-            🎵 Audio Player UI
+            🎵 Audio Player UI (Background Mode)
           </button>
         </div>
 
