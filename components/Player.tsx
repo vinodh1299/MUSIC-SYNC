@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { loadYouTubeIframeApi, fetchRecommendations, YouTubeSearchResult } from "@/lib/youtube";
+import { loadYouTubeIframeApi, fetchRecommendations } from "@/lib/youtube";
 import { PlaybackState, pushState, QueueItem, removeFromQueue } from "@/lib/room";
 
 const DRIFT_TOLERANCE_SEC = 1.5;
@@ -32,7 +32,7 @@ export default function Player({
   const loadedVideoIdRef = useRef<string | null>(null);
   const isHandlingEndRef = useRef(false);
 
-  // Initialize YouTube Player with full embed parameters & error recovery
+  // Initialize YouTube Player with standard origin settings
   useEffect(() => {
     let cancelled = false;
     loadYouTubeIframeApi().then(() => {
@@ -43,7 +43,6 @@ export default function Player({
       playerRef.current = new YT.Player(containerRef.current, {
         height: "100%",
         width: "100%",
-        host: "https://www.youtube-nocookie.com",
         playerVars: {
           autoplay: 1,
           controls: 1,
@@ -69,12 +68,11 @@ export default function Player({
           },
           onError: (e: any) => {
             console.warn("YouTube Player error code:", e.data);
-            // Error codes: 101 / 150 = Embedding disabled by owner, 100 = Not found, 2/5 = HTML5/Param error
             if (e.data === 101 || e.data === 150 || e.data === 100 || e.data === 2 || e.data === 5) {
-              setAutoplayNotice("Embedding restricted for this video. Auto-skipping to alternative track...");
+              setAutoplayNotice("Video embed restricted by uploader. Auto-skipping to alternative track...");
               setTimeout(() => {
                 handleSongEnded();
-              }, 1500);
+              }, 1200);
             }
           },
         },

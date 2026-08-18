@@ -30,6 +30,7 @@ export type YouTubeSearchResult = {
 };
 
 // Searches YouTube for music videos using the YouTube Data API v3.
+// Filters results with videoEmbeddable=true to ensure videos are playable in embeds.
 export async function searchYouTube(query: string): Promise<YouTubeSearchResult[]> {
   const key = process.env.NEXT_PUBLIC_YT_API_KEY;
 
@@ -43,6 +44,7 @@ export async function searchYouTube(query: string): Promise<YouTubeSearchResult[
     part: "snippet",
     type: "video",
     videoCategoryId: "10", // Music
+    videoEmbeddable: "true", // Only return videos that allow embedding!
     maxResults: "10",
     q: query,
     key,
@@ -65,7 +67,7 @@ export async function searchYouTube(query: string): Promise<YouTubeSearchResult[
       }
       if (msg.includes("blocked") || msg.includes("API_KEY_SERVICE_BLOCKED")) {
         throw new Error(
-          "YouTube Data API v3 is not enabled on your Google Cloud Project. Please visit https://console.cloud.google.com/apis/library/youtube.googleapis.com and click Enable."
+          "YouTube Data API v3 is not enabled or restricted. Please visit https://console.cloud.google.com/apis/credentials?project=music-sync-822b1 and create an unrestricted API key."
         );
       }
     }
@@ -99,7 +101,6 @@ export async function fetchRecommendations(
   const terms = extractSearchTerms(currentTitle);
   if (!terms) return [];
 
-  // Search for related songs by the same artist or genre keywords
   const query = `${terms} song`;
   try {
     const results = await searchYouTube(query);
