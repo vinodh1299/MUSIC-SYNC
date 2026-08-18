@@ -23,6 +23,7 @@ export default function Player({
   const audioCtxRef = useRef<any>(null);
   const latestStateRef = useRef<PlaybackState | null>(state);
   const isReconcilingRef = useRef(false);
+  const readyRef = useRef(false);
 
   const [ready, setReady] = useState(false);
   const [displayPosition, setDisplayPosition] = useState(0);
@@ -84,6 +85,26 @@ export default function Player({
         : 0;
     return state.positionSec + elapsed;
   };
+
+  // Auto-resync to exact live position when returning from iOS screen lock or background tab
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && playerRef.current && state) {
+        initBackgroundAudioContext();
+        const expected = getExpectedPosition();
+        if (state.isPlaying) {
+          playerRef.current.seekTo?.(expected, true);
+          playerRef.current.playVideo?.();
+        } else {
+          playerRef.current.pauseVideo?.();
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
 
   // Helper to join live playback with gesture activation
   const joinLiveSync = () => {
@@ -180,7 +201,10 @@ export default function Player({
           playsinline: 1,
         },
         events: {
-          onReady: () => setReady(true),
+          onReady: () => {
+            setReady(true);
+            readyRef.current = true;
+          },
           onStateChange: (e: any) => {
             const playing = e.data === YT.PlayerState.PLAYING;
             const paused = e.data === YT.PlayerState.PAUSED;
@@ -193,7 +217,7 @@ export default function Player({
             }
 
             // Sync user clicks directly on the YouTube video player iframe to Firebase
-            if (!isReconcilingRef.current && ready) {
+            if (!isReconcilingRef.current && readyRef.current) {
               if (paused && latestStateRef.current?.isPlaying) {
                 pushState(
                   { isPlaying: false, positionSec: playerRef.current?.getCurrentTime?.() ?? 0 },
