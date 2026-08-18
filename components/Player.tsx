@@ -21,6 +21,7 @@ export default function Player({
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
   const audioCtxRef = useRef<any>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const latestStateRef = useRef<PlaybackState | null>(state);
   const isReconcilingRef = useRef(false);
   const readyRef = useRef(false);
@@ -51,7 +52,7 @@ export default function Player({
     }
   }, [state?.videoId]);
 
-  // Web Audio API Background Session Keeper for Mobile iOS Safari & Android Chrome Screen Lock
+  // Web Audio MediaStreamDestination Bridge for iOS Screen Lock Playback
   const initBackgroundAudioContext = () => {
     if (typeof window === "undefined") return;
     try {
@@ -60,21 +61,42 @@ export default function Player({
         if (AudioContextClass) {
           const ctx = new AudioContextClass();
           const osc = ctx.createOscillator();
+          const dest = ctx.createMediaStreamDestination();
           const gain = ctx.createGain();
-          gain.gain.value = 0.0001;
+          gain.gain.value = 0.0001; // Soft background stream anchor for iOS WebKit
           osc.connect(gain);
-          gain.connect(ctx.destination);
+          gain.connect(dest);
           osc.start();
           audioCtxRef.current = ctx;
+
+          // Attach MediaStream to HTML5 Audio Element for iOS WebKit Lock Screen Session
+          const audio = new Audio();
+          audio.srcObject = dest.stream;
+          audio.loop = true;
+          audioRef.current = audio;
         }
       }
       if (audioCtxRef.current && audioCtxRef.current.state === "suspended") {
         audioCtxRef.current.resume().catch(() => {});
       }
+      if (audioRef.current && isPlayingLocal) {
+        audioRef.current.play().catch(() => {});
+      }
     } catch (err) {
       console.warn("Background audio context init:", err);
     }
   };
+
+  // Sync background HTML5 audio element playing state with YouTube player
+  useEffect(() => {
+    if (audioRef.current) {
+      if (isPlayingLocal) {
+        audioRef.current.play().catch(() => {});
+      } else {
+        audioRef.current.pause();
+      }
+    }
+  }, [isPlayingLocal]);
 
   // Calculate live expected position taking into account network latency
   const getExpectedPosition = (): number => {
