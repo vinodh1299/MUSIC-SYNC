@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import IdentityGate from "@/components/IdentityGate";
 import ConnectionThread from "@/components/ConnectionThread";
 import Player from "@/components/Player";
@@ -16,6 +16,7 @@ import {
   subscribePresence,
   subscribeQueue,
   subscribeState,
+  subscribeTyping,
 } from "@/lib/room";
 
 const NAMES: [string, string] = [
@@ -23,13 +24,41 @@ const NAMES: [string, string] = [
   process.env.NEXT_PUBLIC_PARTNER_B_NAME || "Keerthana",
 ];
 
+function playNotificationChime() {
+  if (typeof window === "undefined") return;
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15); // A5
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.45);
+  } catch (err) {
+    console.warn("Chime error:", err);
+  }
+}
+
 export default function Home() {
   const [selfName, setSelfName] = useState<string | null>(null);
   const [state, setState] = useState<PlaybackState | null>(null);
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [partnerPresence, setPartnerPresence] = useState<Presence | null>(null);
+  const [isPartnerTyping, setIsPartnerTyping] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [toastNotification, setToastNotification] = useState<{ sender: string; text: string } | null>(null);
+
+  const prevMsgCountRef = useRef(0);
+  const chatOpenRef = useRef(chatOpen);
+  chatOpenRef.current = chatOpen;
 
   const partnerName = useMemo(
     () => NAMES.find((n) => n !== selfName) || NAMES[1],
@@ -40,8 +69,23 @@ export default function Home() {
     if (!selfName) return;
     const unsubState = subscribeState(setState);
     const unsubQueue = subscribeQueue(setQueue);
-    const unsubChat = subscribeChat(setMessages);
+    const unsubChat = subscribeChat((newMessages) => {
+      // Detect incoming message from partner for In-App Toast & Audio Chime
+      if (newMessages.length > prevMsgCountRef.current && prevMsgCountRef.current > 0) {
+        const latest = newMessages[newMessages.length - 1];
+        if (latest && latest.sender === partnerName) {
+          playNotificationChime();
+          if (!chatOpenRef.current) {
+            setToastNotification({ sender: latest.sender, text: latest.text });
+            setTimeout(() => setToastNotification(null), 5000);
+          }
+        }
+      }
+      prevMsgCountRef.current = newMessages.length;
+      setMessages(newMessages);
+    });
     const unsubPresence = subscribePresence(partnerName, setPartnerPresence);
+    const unsubTyping = subscribeTyping(partnerName, setIsPartnerTyping);
     const presence = registerPresence(selfName);
 
     return () => {
@@ -49,6 +93,7 @@ export default function Home() {
       unsubQueue();
       unsubChat();
       unsubPresence();
+      unsubTyping();
       presence.goOffline();
     };
   }, [selfName, partnerName]);
@@ -59,26 +104,60 @@ export default function Home() {
     registerPresence(selfName).setListening(listening);
   }, [listening, selfName]);
 
+  // Compute unread message count
+  const unreadCount = useMemo(() => {
+    if (!selfName) return 0;
+    return messages.filter(
+      (m) => m.sender === partnerName && (!m.seenBy || !m.seenBy.includes(selfName))
+    ).length;
+  }, [messages, partnerName, selfName]);
+
   if (!selfName) {
     return <IdentityGate names={NAMES} onReady={setSelfName} />;
   }
 
   return (
     <main className="page">
+      {/* Floating In-App Toast Notification Banner */}
+      {toastNotification && (
+        <div className="in-app-toast" onClick={() => setChatOpen(true)}>
+          <div className="toast-icon">💬</div>
+          <div className="toast-content">
+            <p className="toast-sender">{toastNotification.sender}</p>
+            <p className="toast-text">{toastNotification.text}</p>
+          </div>
+          <span className="toast-action">View</span>
+        </div>
+      )}
+
       <header className="page-header">
         <ConnectionThread
           selfName={selfName}
           partnerName={partnerName}
           partnerPresence={partnerPresence}
         />
-        <button className="chat-toggle" onClick={() => setChatOpen(true)}>
-          Notes
-          {messages.length > 0 && <span className="chat-badge" />}
+        <button
+          className={`chat-toggle ${unreadCount > 0 ? "has-unread" : ""}`}
+          onClick={() => setChatOpen(true)}
+        >
+          💬 Notes
+          {unreadCount > 0 ? (
+            <span className="unread-badge">{unreadCount}</span>
+          ) : (
+            messages.length > 0 && <span className="chat-badge" />
+          )}
         </button>
       </header>
 
       <section className="stage">
-        <Player selfName={selfName} state={state} queue={queue} onListeningChange={setListening} />
+        <Player
+          selfName={selfName}
+          partnerName={partnerName}
+          partnerPresence={partnerPresence}
+          state={state}
+          queue={queue}
+          onListeningChange={setListening}
+        />
         <SearchPanel selfName={selfName} queue={queue} currentVideoId={state?.videoId} />
       </section>
 
@@ -86,7 +165,10 @@ export default function Home() {
         open={chatOpen}
         onClose={() => setChatOpen(false)}
         selfName={selfName}
+        partnerName={partnerName}
+        partnerPresence={partnerPresence}
         messages={messages}
+        isPartnerTyping={isPartnerTyping}
       />
     </main>
   );

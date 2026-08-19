@@ -18,7 +18,7 @@ export default function ConnectionThread({
     <div className={`thread ${bothListening ? "thread-active" : ""}`}>
       <div className="thread-node">
         <span className="thread-dot thread-dot-self" />
-        <span className="thread-name">{selfName}</span>
+        <span className="thread-name">{selfName} (You)</span>
       </div>
 
       <svg
@@ -38,7 +38,9 @@ export default function ConnectionThread({
 
       <div className="thread-node">
         <span className={`thread-dot ${partnerOnline ? "thread-dot-on" : "thread-dot-off"}`} />
-        <span className="thread-name">{partnerName}</span>
+        <span className="thread-name">
+          {partnerName} {partnerOnline ? "🟢 Online" : "🔴 Offline (Disconnected)"}
+        </span>
       </div>
     </div>
   );

@@ -2,18 +2,22 @@
 
 import { useEffect, useRef, useState } from "react";
 import { loadYouTubeIframeApi, fetchRecommendations, fetchAudioStream } from "@/lib/youtube";
-import { PlaybackState, pushState, QueueItem, removeFromQueue } from "@/lib/room";
+import { PlaybackState, pushState, QueueItem, removeFromQueue, Presence } from "@/lib/room";
 
 const DRIFT_TOLERANCE_SEC = 1.0;
 const HEARTBEAT_MS = 4000;
 
 export default function Player({
   selfName,
+  partnerName,
+  partnerPresence,
   state,
   queue,
   onListeningChange,
 }: {
   selfName: string;
+  partnerName?: string;
+  partnerPresence?: Presence | null;
   state: PlaybackState | null;
   queue: QueueItem[];
   onListeningChange: (listening: boolean) => void;
@@ -36,6 +40,7 @@ export default function Player({
   const [autoplayNotice, setAutoplayNotice] = useState<string | null>(null);
   const [needsGestureToSync, setNeedsGestureToSync] = useState(false);
   const [audioStreamUrl, setAudioStreamUrl] = useState<string | null>(null);
+  const [isVideoHidden, setIsVideoHidden] = useState(false);
 
   const seekingRef = useRef(false);
   const loadedVideoIdRef = useRef<string | null>(null);
@@ -508,6 +513,8 @@ export default function Player({
     return `${m}:${sec.toString().padStart(2, "0")}`;
   };
 
+  const partnerIsOffline = partnerPresence ? !partnerPresence.online : false;
+
   return (
     <div className={`player-wrapper ${mode === "video" ? "mode-video" : "mode-compact"}`}>
       {/* Hidden Native HTML5 Audio Element for Unrestricted Background Mobile Audio */}
@@ -540,19 +547,39 @@ export default function Player({
           </button>
         </div>
 
-        <button
-          className={`autoplay-toggle ${autoplay ? "enabled" : "disabled"}`}
-          onClick={() => setAutoplay(!autoplay)}
-          title="Autoplay next recommended song based on previous song preferences"
-        >
-          Autoplay Preferences: {autoplay ? "ON 🔁" : "OFF ⏸"}
-        </button>
+        <div className="player-toolbar-actions">
+          <button
+            className={`video-toggle-btn ${isVideoHidden ? "hidden-mode" : ""}`}
+            onClick={() => setIsVideoHidden(!isVideoHidden)}
+            title={isVideoHidden ? "Show video player frame" : "Hide video frame so video is not visible by mistake"}
+          >
+            {isVideoHidden ? "👁️ Show Video" : "🙈 Hide Video Frame"}
+          </button>
+
+          <button
+            className={`autoplay-toggle ${autoplay ? "enabled" : "disabled"}`}
+            onClick={() => setAutoplay(!autoplay)}
+            title="Autoplay next recommended song based on previous song preferences"
+          >
+            Autoplay Preferences: {autoplay ? "ON 🔁" : "OFF ⏸"}
+          </button>
+        </div>
       </div>
+
+      {/* Offline / Disconnected Partner Banner */}
+      {partnerIsOffline && (
+        <div className="offline-banner">
+          ⚠️ {partnerName || "Partner"} is Offline (Disconnected)
+        </div>
+      )}
 
       {autoplayNotice && <div className="autoplay-banner">{autoplayNotice}</div>}
 
       {/* Main YouTube Video Interface Screen */}
-      <div className="youtube-video-container" onClick={initBackgroundAudioContext}>
+      <div
+        className={`youtube-video-container ${isVideoHidden ? "video-hidden" : ""}`}
+        onClick={initBackgroundAudioContext}
+      >
         <div className="youtube-player-frame" ref={containerRef} />
         {!state?.videoId && (
           <div className="player-placeholder">
@@ -590,7 +617,11 @@ export default function Player({
           <div className="player-meta-text">
             <p className="player-title">{state?.title || "Nothing playing yet"}</p>
             <p className="player-sub">
-              {state?.updatedBy ? `Synced with ${state.updatedBy}` : "Search below to start"}
+              {state?.updatedBy
+                ? partnerIsOffline
+                  ? `Synced with ${state.updatedBy} (${partnerName} Offline)`
+                  : `Synced with ${state.updatedBy}`
+                : "Search below to start"}
             </p>
           </div>
         </div>
