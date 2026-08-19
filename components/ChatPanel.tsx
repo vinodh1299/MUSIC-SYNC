@@ -21,11 +21,12 @@ export default function ChatPanel({
   isPartnerTyping: boolean;
 }) {
   const [text, setText] = useState("");
+  const [isFloating, setIsFloating] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<any>(null);
 
   // Floating Draggable State (position coordinates)
-  const [pos, setPos] = useState({ x: 20, y: 80 });
+  const [pos, setPos] = useState({ x: 40, y: 80 });
   const isDraggingRef = useRef(false);
   const dragStartRef = useRef({ x: 0, y: 0 });
 
@@ -43,19 +44,20 @@ export default function ChatPanel({
     }
   }, [messages, open, isPartnerTyping]);
 
-  // Mouse & Touch Drag Handlers
+  // Mouse & Touch Drag Handlers for Floating Mode
   const startDrag = (clientX: number, clientY: number) => {
+    if (!isFloating) return;
     isDraggingRef.current = true;
     dragStartRef.current = { x: clientX - pos.x, y: clientY - pos.y };
   };
 
   const onMouseDown = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).tagName === "BUTTON") return;
+    if (!isFloating || (e.target as HTMLElement).tagName === "BUTTON") return;
     startDrag(e.clientX, e.clientY);
   };
 
   const onTouchStart = (e: React.TouchEvent) => {
-    if ((e.target as HTMLElement).tagName === "BUTTON") return;
+    if (!isFloating || (e.target as HTMLElement).tagName === "BUTTON") return;
     const touch = e.touches[0];
     if (touch) startDrag(touch.clientX, touch.clientY);
   };
@@ -93,7 +95,7 @@ export default function ChatPanel({
       window.removeEventListener("touchmove", onTouchMove);
       window.removeEventListener("touchend", endDrag);
     };
-  }, [pos]);
+  }, [pos, isFloating]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -125,36 +127,52 @@ export default function ChatPanel({
     return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true });
   };
 
-  if (!open) return null;
-
   const partnerOnline = partnerPresence ? partnerPresence.online : false;
 
   return (
     <div
-      className="chat-floating-window"
-      style={{
-        left: `${pos.x}px`,
-        top: `${pos.y}px`,
-      }}
+      className={
+        isFloating
+          ? "chat-floating-window"
+          : `chat-drawer ${open ? "chat-drawer-open" : ""}`
+      }
+      style={
+        isFloating
+          ? {
+              left: `${pos.x}px`,
+              top: `${pos.y}px`,
+            }
+          : undefined
+      }
     >
       <div
-        className="chat-header chat-header-draggable"
+        className={`chat-header ${isFloating ? "chat-header-draggable" : ""}`}
         onMouseDown={onMouseDown}
         onTouchStart={onTouchStart}
-        title="Click & drag to move window"
       >
         <div className="chat-header-title">
           <div className="chat-header-drag-handle">
-            <span className="drag-icon">⋮⋮</span>
+            {isFloating && <span className="drag-icon">⋮⋮</span>}
             <span>Notes to {partnerName}</span>
           </div>
           <span className={`chat-partner-status ${partnerOnline ? "status-online" : "status-offline"}`}>
             {partnerOnline ? "🟢 Online" : "🔴 Offline (Disconnected)"}
           </span>
         </div>
-        <button className="chat-close" onClick={onClose} aria-label="Close chat">
-          ✕
-        </button>
+
+        <div className="chat-header-controls">
+          <button
+            className="chat-mode-btn"
+            onClick={() => setIsFloating(!isFloating)}
+            title={isFloating ? "Dock chat to side drawer" : "Pop out chat window to move anywhere on screen"}
+          >
+            {isFloating ? "📌 Dock Side" : "↗ Pop Out"}
+          </button>
+
+          <button className="chat-close" onClick={onClose} aria-label="Close chat">
+            ✕
+          </button>
+        </div>
       </div>
 
       <div className="chat-list" ref={listRef}>
