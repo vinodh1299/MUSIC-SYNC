@@ -99,21 +99,42 @@ function parseTitleMetadata(rawTitle: string): { songName: string; artistOrAlbum
   return { songName, artistOrAlbum };
 }
 
-// Smart Recommendation Engine: Finds NEW, DIFFERENT songs based on artist/album/genre preferences
+// Detect language from title keywords
+function detectLanguage(title: string): string {
+  const t = title.toLowerCase();
+  if (t.includes("kannada") || t.includes("kannad")) return "kannada";
+  if (t.includes("hindi") || t.includes("bollywood") || t.includes("arijit") || t.includes("sonu") || t.includes("shreya")) return "hindi";
+  if (t.includes("telugu") || t.includes("tollywood")) return "telugu";
+  if (t.includes("malayalam") || t.includes("mollywood")) return "malayalam";
+  return "tamil"; // Default to Tamil if Indian melody keywords detected
+}
+
+// Extract main song keywords to strictly exclude all variations of the same song
+function extractSongKeywords(title: string): string[] {
+  return title
+    .replace(/[\(\[\{].*?[\)\]\}]/g, "")
+    .replace(/(official|video|song|lyric|lyrics|audio|hd|4k|mv|full|remix|cover|karaoke)/gi, "")
+    .toLowerCase()
+    .split(/[\s|:\-\,\.]+/)
+    .filter((w) => w.length > 2 && !["the", "and", "from", "with", "for", "you"].includes(w));
+}
+
+// Smart Recommendation Engine: Finds NEW, DIFFERENT songs in the same language/genre
 export async function fetchRecommendations(
   currentTitle: string,
   excludeVideoIds: string[] = []
 ): Promise<YouTubeSearchResult[]> {
   const { songName, artistOrAlbum } = parseTitleMetadata(currentTitle);
   const excludeSet = new Set(excludeVideoIds);
+  const songKeywords = extractSongKeywords(songName);
+  const lang = detectLanguage(currentTitle);
 
-  // Normalize song name to prevent repeating alternative uploads of the exact same song
-  const primaryWord = songName.toLowerCase().split(" ")[0];
-
+  // Search queries focused on finding OTHER popular songs in the same language & style
   const queries = [
-    `${artistOrAlbum} top songs`,
-    `${songName} similar music songs`,
-    `${artistOrAlbum} hits`,
+    `${lang} melody hit songs`,
+    `${artistOrAlbum} top songs ${lang}`,
+    `${lang} romantic hit songs`,
+    `${lang} super hit songs`,
   ];
 
   for (const query of queries) {
@@ -121,25 +142,27 @@ export async function fetchRecommendations(
       const results = await searchYouTube(query);
       const candidates = results.filter((item) => {
         if (excludeSet.has(item.videoId)) return false;
-        // Exclude exact same song title variations
+        
+        // STRICT EXCLUSION: Ensure no core words from the current song title match to prevent playing remixes/covers/alternate uploads of the SAME song
         const itemLower = item.title.toLowerCase();
-        if (primaryWord && primaryWord.length > 3 && itemLower.includes(primaryWord)) {
-          return false;
-        }
-        return true;
+        const containsSameSongWord = songKeywords.some(
+          (word) => word.length >= 3 && itemLower.includes(word)
+        );
+        
+        return !containsSameSongWord;
       });
 
       if (candidates.length > 0) {
         return candidates;
       }
     } catch (err) {
-      console.warn(`Query "${query}" failed:`, err);
+      console.warn(`Recommendation query "${query}" failed:`, err);
     }
   }
 
-  // Fallback: search for top music hits
+  // Fallback: Return any non-excluded popular track in the same language
   try {
-    const fallbackResults = await searchYouTube("popular music songs");
+    const fallbackResults = await searchYouTube(`${lang} hit songs`);
     return fallbackResults.filter((item) => !excludeSet.has(item.videoId));
   } catch {
     return [];

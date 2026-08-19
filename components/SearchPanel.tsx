@@ -49,6 +49,9 @@ export default function SearchPanel({
   };
 
   const playNow = async (item: { videoId: string; title: string; thumbnail: string }) => {
+    // Automatically clear search input and suggestions once song starts playing
+    clearSearchInput();
+
     // If not already in queue, ensure it's in the room queue so next song continues smoothly
     await addToQueue({ ...item, addedBy: selfName }, queue);
     pushState(
@@ -64,12 +67,14 @@ export default function SearchPanel({
   };
 
   const addQueue = (item: { videoId: string; title: string; thumbnail: string }) => {
+    clearSearchInput();
     addToQueue({ ...item, addedBy: selfName }, queue);
     setNotice(`Added "${item.title.substring(0, 30)}..." to queue`);
     setTimeout(() => setNotice(null), 3000);
   };
 
   const playNext = async (item: { videoId: string; title: string; thumbnail: string }) => {
+    clearSearchInput();
     await insertPlayNextInQueue({ ...item, addedBy: selfName }, queue);
     setNotice(`Set "${item.title.substring(0, 30)}..." to play next! ⚡`);
     setTimeout(() => setNotice(null), 3000);
