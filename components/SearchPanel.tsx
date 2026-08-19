@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { searchYouTube, YouTubeSearchResult } from "@/lib/youtube";
-import { addToQueue, pushState, QueueItem } from "@/lib/room";
+import { addToQueue, removeFromQueue, clearQueue, pushState, QueueItem } from "@/lib/room";
 
 export default function SearchPanel({
   selfName,
@@ -17,6 +17,7 @@ export default function SearchPanel({
   const [results, setResults] = useState<YouTubeSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const runSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,6 +49,18 @@ export default function SearchPanel({
 
   const addQueue = (item: { videoId: string; title: string; thumbnail: string }) => {
     addToQueue({ ...item, addedBy: selfName });
+    setNotice(`Added "${item.title.substring(0, 30)}..." to queue`);
+    setTimeout(() => setNotice(null), 3000);
+  };
+
+  const removeItem = (id: string) => {
+    removeFromQueue(id);
+  };
+
+  const handleClearQueue = () => {
+    if (confirm("Clear all queued songs?")) {
+      clearQueue();
+    }
   };
 
   return (
@@ -55,7 +68,7 @@ export default function SearchPanel({
       <form className="search-row" onSubmit={runSearch}>
         <input
           className="search-input"
-          placeholder="Find a song for both of you"
+          placeholder="Find a song to listen or queue together..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
@@ -65,6 +78,7 @@ export default function SearchPanel({
       </form>
 
       {error && <p className="panel-error">{error}</p>}
+      {notice && <div className="queue-notice-banner">✨ {notice}</div>}
 
       {results.length > 0 && (
         <ul className="result-list">
@@ -90,7 +104,12 @@ export default function SearchPanel({
 
       {queue.length > 0 && (
         <div className="queue">
-          <p className="queue-heading">Up next</p>
+          <div className="queue-header-row">
+            <p className="queue-heading">Up next in Queue ({queue.length})</p>
+            <button className="chip-btn chip-btn-danger" onClick={handleClearQueue}>
+              🧹 Clear Queue
+            </button>
+          </div>
           <ul className="result-list">
             {queue.map((item) => (
               <li
@@ -100,11 +119,18 @@ export default function SearchPanel({
                 <img src={item.thumbnail} alt="" className="result-thumb" />
                 <div className="result-meta">
                   <p className="result-title">{item.title}</p>
-                  <p className="result-channel">added by {item.addedBy}</p>
+                  <p className="result-channel">queued by {item.addedBy}</p>
                 </div>
                 <div className="result-actions">
                   <button className="chip-btn" onClick={() => playNow(item)}>
                     Play now
+                  </button>
+                  <button
+                    className="chip-btn chip-btn-ghost chip-btn-remove"
+                    onClick={() => removeItem(item.id)}
+                    title="Remove from queue"
+                  >
+                    🗑️ Remove
                   </button>
                 </div>
               </li>

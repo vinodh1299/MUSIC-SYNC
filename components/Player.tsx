@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { loadYouTubeIframeApi, fetchRecommendations, fetchAudioStream } from "@/lib/youtube";
-import { PlaybackState, pushState, QueueItem, removeFromQueue, Presence } from "@/lib/room";
+import { PlaybackState, pushState, QueueItem, removeFromQueue, addToQueue, Presence } from "@/lib/room";
 
 const DRIFT_TOLERANCE_SEC = 1.0;
 const HEARTBEAT_MS = 4000;
@@ -506,6 +506,19 @@ export default function Player({
     pushState({ isPlaying: true, positionSec: seconds }, selfName);
   };
 
+  const handleLikeQueueSong = () => {
+    if (state?.videoId && state?.title) {
+      addToQueue({
+        videoId: state.videoId,
+        title: state.title,
+        thumbnail: state.thumbnail || "",
+        addedBy: selfName,
+      });
+      setAutoplayNotice(`❤️ Saved "${state.title.substring(0, 30)}..." to queue`);
+      setTimeout(() => setAutoplayNotice(null), 3000);
+    }
+  };
+
   const fmt = (s: number) => {
     if (!Number.isFinite(s) || s < 0) s = 0;
     const m = Math.floor(s / 60);
@@ -624,6 +637,16 @@ export default function Player({
                 : "Search below to start"}
             </p>
           </div>
+
+          {state?.videoId && (
+            <button
+              className="chip-btn chip-btn-ghost like-queue-btn"
+              onClick={handleLikeQueueSong}
+              title="Save current song to queue for next time"
+            >
+              ❤️ Queue Song
+            </button>
+          )}
         </div>
 
         <div className="player-transport">

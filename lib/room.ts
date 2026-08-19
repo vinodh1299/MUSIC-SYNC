@@ -98,6 +98,10 @@ export async function removeFromQueue(id: string) {
   await remove(ref(getDb(), `rooms/${ROOM_ID}/queue/${id}`));
 }
 
+export async function clearQueue() {
+  await remove(ref(getDb(), `rooms/${ROOM_ID}/queue`));
+}
+
 export async function sendChatMessage(sender: string, text: string) {
   await push(chatRef(), {
     sender,
