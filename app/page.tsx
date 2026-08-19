@@ -75,8 +75,15 @@ export default function Home() {
       if (newMessages.length > prevMsgCountRef.current && prevMsgCountRef.current > 0) {
         const latest = newMessages[newMessages.length - 1];
         if (latest && latest.sender === partnerName) {
-          // ONLY trigger chime sound, audio ducking, and toast notification if chat is CLOSED!
-          if (!chatOpenRef.current) {
+          // Check if chat is open AND actively focused & visible on screen
+          const isChatVisibleAndFocused =
+            chatOpenRef.current &&
+            typeof document !== "undefined" &&
+            document.visibilityState === "visible" &&
+            document.hasFocus();
+
+          // If chat is closed OR user is in another tab/window -> PLAY CHIME, DUCK AUDIO, & SHOW TOAST!
+          if (!isChatVisibleAndFocused) {
             setDuckTrigger((prev) => prev + 1);
             playNotificationChime();
             setToastNotification({ sender: latest.sender, text: latest.text });
