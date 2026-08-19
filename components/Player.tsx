@@ -14,6 +14,7 @@ export default function Player({
   state,
   queue,
   onListeningChange,
+  duckTrigger,
 }: {
   selfName: string;
   partnerName?: string;
@@ -21,6 +22,7 @@ export default function Player({
   state: PlaybackState | null;
   queue: QueueItem[];
   onListeningChange: (listening: boolean) => void;
+  duckTrigger?: number;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
@@ -51,6 +53,27 @@ export default function Player({
   useEffect(() => {
     latestStateRef.current = state;
   }, [state]);
+
+  // Audio Ducking on Chat Notification (Decreases song volume to 20%, then restores to 100%)
+  useEffect(() => {
+    if (!duckTrigger || duckTrigger === 0) return;
+    try {
+      if (playerRef.current && typeof playerRef.current.setVolume === "function") {
+        playerRef.current.setVolume(20);
+        setTimeout(() => {
+          try { playerRef.current?.setVolume?.(100); } catch {}
+        }, 1600);
+      }
+      if (htmlAudioRef.current) {
+        htmlAudioRef.current.volume = 0.2;
+        setTimeout(() => {
+          if (htmlAudioRef.current) htmlAudioRef.current.volume = 1.0;
+        }, 1600);
+      }
+    } catch (err) {
+      console.warn("Audio ducking error:", err);
+    }
+  }, [duckTrigger]);
 
   // Track history of played video IDs
   useEffect(() => {

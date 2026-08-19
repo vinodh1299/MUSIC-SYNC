@@ -35,7 +35,7 @@ function playNotificationChime() {
     osc.type = "sine";
     osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
     osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15); // A5
-    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
     osc.connect(gain);
     gain.connect(ctx.destination);
@@ -55,6 +55,7 @@ export default function Home() {
   const [isPartnerTyping, setIsPartnerTyping] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [toastNotification, setToastNotification] = useState<{ sender: string; text: string } | null>(null);
+  const [duckTrigger, setDuckTrigger] = useState(0);
 
   const prevMsgCountRef = useRef(0);
   const chatOpenRef = useRef(chatOpen);
@@ -70,11 +71,15 @@ export default function Home() {
     const unsubState = subscribeState(setState);
     const unsubQueue = subscribeQueue(setQueue);
     const unsubChat = subscribeChat((newMessages) => {
-      // Detect incoming message from partner for In-App Toast & Audio Chime
+      // Detect incoming message from partner for In-App Toast, Chime & Audio Ducking
       if (newMessages.length > prevMsgCountRef.current && prevMsgCountRef.current > 0) {
         const latest = newMessages[newMessages.length - 1];
         if (latest && latest.sender === partnerName) {
+          // 1. Duck playing song volume temporarily so notification is clearly audible
+          setDuckTrigger((prev) => prev + 1);
+          // 2. Play notification sound chime
           playNotificationChime();
+
           if (!chatOpenRef.current) {
             setToastNotification({ sender: latest.sender, text: latest.text });
             setTimeout(() => setToastNotification(null), 5000);
@@ -157,6 +162,7 @@ export default function Home() {
           state={state}
           queue={queue}
           onListeningChange={setListening}
+          duckTrigger={duckTrigger}
         />
         <SearchPanel selfName={selfName} queue={queue} currentVideoId={state?.videoId} />
       </section>
