@@ -71,16 +71,14 @@ export default function Home() {
     const unsubState = subscribeState(setState);
     const unsubQueue = subscribeQueue(setQueue);
     const unsubChat = subscribeChat((newMessages) => {
-      // Detect incoming message from partner for In-App Toast, Chime & Audio Ducking
+      // Detect incoming message from partner
       if (newMessages.length > prevMsgCountRef.current && prevMsgCountRef.current > 0) {
         const latest = newMessages[newMessages.length - 1];
         if (latest && latest.sender === partnerName) {
-          // 1. Duck playing song volume temporarily so notification is clearly audible
-          setDuckTrigger((prev) => prev + 1);
-          // 2. Play notification sound chime
-          playNotificationChime();
-
+          // ONLY trigger chime sound, audio ducking, and toast notification if chat is CLOSED!
           if (!chatOpenRef.current) {
+            setDuckTrigger((prev) => prev + 1);
+            playNotificationChime();
             setToastNotification({ sender: latest.sender, text: latest.text });
             setTimeout(() => setToastNotification(null), 5000);
           }
