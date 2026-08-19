@@ -44,7 +44,19 @@ export default function ChatPanel({
     }
   }, [messages, open, isPartnerTyping]);
 
-  // Mouse & Touch Drag Handlers for Floating Mode
+  // Launch Standalone Native Browser Popup Window
+  const openNewWindow = () => {
+    if (typeof window !== "undefined") {
+      onClose(); // close side drawer in main window
+      window.open(
+        "/chat-popout",
+        "LovewaveChatWindow",
+        "width=380,height=560,resizable=yes,scrollbars=yes,status=no,location=no,toolbar=no"
+      );
+    }
+  };
+
+  // Mouse & Touch Drag Handlers for In-App Floating Mode
   const startDrag = (clientX: number, clientY: number) => {
     if (!isFloating) return;
     isDraggingRef.current = true;
@@ -127,6 +139,8 @@ export default function ChatPanel({
     return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true });
   };
 
+  if (!open) return null;
+
   const partnerOnline = partnerPresence ? partnerPresence.online : false;
 
   return (
@@ -163,10 +177,18 @@ export default function ChatPanel({
         <div className="chat-header-controls">
           <button
             className="chat-mode-btn"
-            onClick={() => setIsFloating(!isFloating)}
-            title={isFloating ? "Dock chat to side drawer" : "Pop out chat window to move anywhere on screen"}
+            onClick={openNewWindow}
+            title="Open chat in a separate native browser window to move across screens & desktops"
           >
-            {isFloating ? "📌 Dock Side" : "↗ Pop Out"}
+            🗔 New Window
+          </button>
+
+          <button
+            className="chat-mode-btn"
+            onClick={() => setIsFloating(!isFloating)}
+            title={isFloating ? "Dock chat to side drawer" : "Float chat window inside this tab"}
+          >
+            {isFloating ? "📌 Dock Side" : "↗ Float In-App"}
           </button>
 
           <button className="chat-close" onClick={onClose} aria-label="Close chat">
