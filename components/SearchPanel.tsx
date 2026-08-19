@@ -114,37 +114,42 @@ export default function SearchPanel({
       {error && <p className="panel-error">{error}</p>}
       {notice && <div className="queue-notice-banner">{notice}</div>}
 
-      {/* Search Suggestions & Results List */}
+      {/* YouTube-Style Scrollable Video Search Results Feed */}
       {results.length > 0 && query.trim() && (
         <div className="search-results-section">
           <div className="results-header-row">
-            <span className="results-heading">Search Results ({results.length})</span>
+            <span className="results-heading">📺 YouTube Video Results ({results.length})</span>
             <button className="chip-btn chip-btn-ghost" onClick={clearSearchInput}>
               Dismiss
             </button>
           </div>
-          <ul className="result-list">
-            {results.map((r) => (
-              <li key={r.videoId} className="result-row">
-                <img src={r.thumbnail} alt="" className="result-thumb" />
-                <div className="result-meta">
-                  <p className="result-title">{r.title}</p>
-                  <p className="result-channel">{r.channel}</p>
-                </div>
-                <div className="result-actions">
-                  <button className="chip-btn" onClick={() => playNow(r)}>
-                    Play now
-                  </button>
-                  <button className="chip-btn chip-btn-ghost" onClick={() => playNext(r)} title="Set to play next in queue">
-                    ⚡ Play Next
-                  </button>
-                  <button className="chip-btn chip-btn-ghost" onClick={() => addQueue(r)}>
-                    + Queue
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <div className="search-results-scrollable">
+            <ul className="result-list">
+              {results.map((r) => (
+                <li key={r.videoId} className="result-row yt-result-row">
+                  <div className="yt-thumb-wrapper">
+                    <img src={r.thumbnail} alt="" className="yt-result-thumb" />
+                    <span className="yt-badge">HD</span>
+                  </div>
+                  <div className="result-meta">
+                    <p className="result-title" title={r.title}>{r.title}</p>
+                    <p className="result-channel">channel • {r.channel}</p>
+                  </div>
+                  <div className="result-actions">
+                    <button className="chip-btn" onClick={() => playNow(r)}>
+                      Play now
+                    </button>
+                    <button className="chip-btn chip-btn-ghost" onClick={() => playNext(r)} title="Set to play next in queue">
+                      ⚡ Play Next
+                    </button>
+                    <button className="chip-btn chip-btn-ghost" onClick={() => addQueue(r)}>
+                      + Queue
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       )}
 

@@ -561,6 +561,32 @@ body {
   color: var(--text-muted);
 }
 
+/* YouTube-Style Scrollable Search Results Feed */
+.search-results-scrollable {
+  max-height: 480px;
+  overflow-y: auto;
+  padding-right: 6px;
+  margin-top: 6px;
+}
+
+.search-results-scrollable::-webkit-scrollbar {
+  width: 6px;
+}
+
+.search-results-scrollable::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 999px;
+}
+
+.search-results-scrollable::-webkit-scrollbar-thumb {
+  background: var(--glass-border);
+  border-radius: 999px;
+}
+
+.search-results-scrollable::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
 .result-list {
   list-style: none;
   margin: 0;
@@ -590,6 +616,41 @@ body {
 .result-row-active {
   border: 1px solid var(--accent);
   box-shadow: 0 0 16px var(--accent-glow);
+}
+
+.yt-result-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+}
+
+.yt-thumb-wrapper {
+  position: relative;
+  width: 108px;
+  height: 66px;
+  border-radius: 10px;
+  overflow: hidden;
+  flex-shrink: 0;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
+.yt-result-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.yt-badge {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  background: rgba(0, 0, 0, 0.8);
+  color: var(--text);
+  font-size: 9px;
+  font-weight: 800;
+  padding: 2px 5px;
+  border-radius: 4px;
 }
 
 .result-thumb {

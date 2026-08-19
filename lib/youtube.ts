@@ -45,7 +45,7 @@ export async function searchYouTube(query: string): Promise<YouTubeSearchResult[
     type: "video",
     videoCategoryId: "10", // Music
     videoEmbeddable: "true", // Only return videos that allow embedding!
-    maxResults: "10",
+    maxResults: "25", // Increased to 25 for YouTube-style scrollable video feed
     q: query,
     key,
   });
