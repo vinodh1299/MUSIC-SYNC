@@ -1,7 +1,9 @@
-# lovewave
+# lovewave - Synced Music & Video Player for Vinodh & Keerthana
 
-A single, private room for two people, far apart, listening to the same song at the same time —
-with synced play/pause/seek, a shared queue, and a small chat drawer for notes in between songs.
+> **Release**: Compact Background Audio, YouTube Sync & Live iOS Lock Screen Integration
+
+A single, private room for Vinodh and Keerthana to listen to music and watch videos at the exact same time —
+with 2-way synced play/pause/seek, shared queue, and a live chat drawer.
 
 **Important technical note:** YT Music has no public API for embedding or controlling playback on
 a third-party site — Google only exposes that for regular YouTube (via the IFrame Player API).
