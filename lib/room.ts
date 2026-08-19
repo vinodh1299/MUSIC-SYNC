@@ -90,8 +90,33 @@ export async function pushState(partial: Partial<PlaybackState>, actor: string) 
   });
 }
 
-export async function addToQueue(item: Omit<QueueItem, "id">) {
+export async function addToQueue(item: Omit<QueueItem, "id">, currentQueue: QueueItem[] = []) {
+  // If already in queue, skip adding duplicate
+  const exists = currentQueue.some((q) => q.videoId === item.videoId);
+  if (exists) return;
   await push(queueRef(), item);
+}
+
+export async function insertPlayNextInQueue(item: Omit<QueueItem, "id">, currentQueue: QueueItem[] = []) {
+  const db = getDb();
+  // Filter out any existing copy of this videoId
+  const remaining = currentQueue.filter((q) => q.videoId !== item.videoId);
+  const newId = push(queueRef()).key as string;
+  const newItem = { id: newId, ...item };
+  const updatedQueue = [newItem, ...remaining];
+
+  // Atomic update queue in Firebase
+  const updates: Record<string, any> = {};
+  updates[`rooms/${ROOM_ID}/queue`] = null;
+  for (const q of updatedQueue) {
+    updates[`rooms/${ROOM_ID}/queue/${q.id}`] = {
+      videoId: q.videoId,
+      title: q.title,
+      thumbnail: q.thumbnail,
+      addedBy: q.addedBy,
+    };
+  }
+  await update(ref(db), updates);
 }
 
 export async function removeFromQueue(id: string) {

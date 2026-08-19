@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { loadYouTubeIframeApi, fetchRecommendations, fetchAudioStream } from "@/lib/youtube";
-import { PlaybackState, pushState, QueueItem, removeFromQueue, addToQueue, Presence } from "@/lib/room";
+import { PlaybackState, pushState, QueueItem, removeFromQueue, addToQueue, insertPlayNextInQueue, Presence } from "@/lib/room";
 
 const DRIFT_TOLERANCE_SEC = 1.0;
 const HEARTBEAT_MS = 4000;
@@ -321,16 +321,24 @@ export default function Player({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Handle Autoplay / Next Song when current video finishes or errors out
+  // Handle Queue-First Autoplay / Next Song
   const handleSongEnded = async () => {
     if (isHandlingEndRef.current) return;
     isHandlingEndRef.current = true;
 
     try {
-      // 1. Check if there are queued items first
+      // 1. Filter queue for next unplayed item
+      const candidateQueue = queue ? queue.filter((q) => q.videoId !== state?.videoId) : [];
       if (queue && queue.length > 0) {
-        const nextItem = queue[0];
-        setAutoplayNotice(`Playing queued song: ${nextItem.title}`);
+        const currentInQueue = queue.find((q) => q.videoId === state?.videoId);
+        if (currentInQueue) {
+          await removeFromQueue(currentInQueue.id);
+        }
+      }
+
+      if (candidateQueue.length > 0) {
+        const nextItem = candidateQueue[0];
+        setAutoplayNotice(`Playing next from queue: ${nextItem.title}`);
         await removeFromQueue(nextItem.id);
         await pushState(
           {
@@ -346,7 +354,7 @@ export default function Player({
         return;
       }
 
-      // 2. If no queued items and Autoplay is enabled: find next preference recommendation
+      // 2. If queue is empty and Autoplay is enabled: find preference recommendation
       if (autoplay && state?.title) {
         setAutoplayNotice("Finding next song based on your preferences...");
         const recommendations = await fetchRecommendations(
@@ -508,12 +516,15 @@ export default function Player({
 
   const handleLikeQueueSong = () => {
     if (state?.videoId && state?.title) {
-      addToQueue({
-        videoId: state.videoId,
-        title: state.title,
-        thumbnail: state.thumbnail || "",
-        addedBy: selfName,
-      });
+      addToQueue(
+        {
+          videoId: state.videoId,
+          title: state.title,
+          thumbnail: state.thumbnail || "",
+          addedBy: selfName,
+        },
+        queue
+      );
       setAutoplayNotice(`❤️ Saved "${state.title.substring(0, 30)}..." to queue`);
       setTimeout(() => setAutoplayNotice(null), 3000);
     }

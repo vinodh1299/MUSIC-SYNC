@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { searchYouTube, YouTubeSearchResult } from "@/lib/youtube";
-import { addToQueue, removeFromQueue, clearQueue, pushState, QueueItem } from "@/lib/room";
+import { addToQueue, insertPlayNextInQueue, removeFromQueue, clearQueue, pushState, QueueItem } from "@/lib/room";
 
 export default function SearchPanel({
   selfName,
@@ -19,6 +19,14 @@ export default function SearchPanel({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  // Clear suggestions immediately when search bar is cleared
+  useEffect(() => {
+    if (!query.trim()) {
+      setResults([]);
+      setError(null);
+    }
+  }, [query]);
+
   const runSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim()) return;
@@ -34,7 +42,15 @@ export default function SearchPanel({
     }
   };
 
-  const playNow = (item: { videoId: string; title: string; thumbnail: string }) => {
+  const clearSearchInput = () => {
+    setQuery("");
+    setResults([]);
+    setError(null);
+  };
+
+  const playNow = async (item: { videoId: string; title: string; thumbnail: string }) => {
+    // If not already in queue, ensure it's in the room queue so next song continues smoothly
+    await addToQueue({ ...item, addedBy: selfName }, queue);
     pushState(
       {
         videoId: item.videoId,
@@ -48,8 +64,14 @@ export default function SearchPanel({
   };
 
   const addQueue = (item: { videoId: string; title: string; thumbnail: string }) => {
-    addToQueue({ ...item, addedBy: selfName });
+    addToQueue({ ...item, addedBy: selfName }, queue);
     setNotice(`Added "${item.title.substring(0, 30)}..." to queue`);
+    setTimeout(() => setNotice(null), 3000);
+  };
+
+  const playNext = async (item: { videoId: string; title: string; thumbnail: string }) => {
+    await insertPlayNextInQueue({ ...item, addedBy: selfName }, queue);
+    setNotice(`Set "${item.title.substring(0, 30)}..." to play next! ⚡`);
     setTimeout(() => setNotice(null), 3000);
   };
 
@@ -66,42 +88,62 @@ export default function SearchPanel({
   return (
     <div className="panel">
       <form className="search-row" onSubmit={runSearch}>
-        <input
-          className="search-input"
-          placeholder="Find a song to listen or queue together..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
+        <div className="search-input-wrapper">
+          <input
+            className="search-input"
+            placeholder="Find a song to listen or queue together..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          {query && (
+            <button type="button" className="search-clear-btn" onClick={clearSearchInput} title="Clear search">
+              ✕
+            </button>
+          )}
+        </div>
         <button className="search-btn" type="submit" disabled={loading}>
           {loading ? "Searching…" : "Search"}
         </button>
       </form>
 
       {error && <p className="panel-error">{error}</p>}
-      {notice && <div className="queue-notice-banner">✨ {notice}</div>}
+      {notice && <div className="queue-notice-banner">{notice}</div>}
 
-      {results.length > 0 && (
-        <ul className="result-list">
-          {results.map((r) => (
-            <li key={r.videoId} className="result-row">
-              <img src={r.thumbnail} alt="" className="result-thumb" />
-              <div className="result-meta">
-                <p className="result-title">{r.title}</p>
-                <p className="result-channel">{r.channel}</p>
-              </div>
-              <div className="result-actions">
-                <button className="chip-btn" onClick={() => playNow(r)}>
-                  Play now
-                </button>
-                <button className="chip-btn chip-btn-ghost" onClick={() => addQueue(r)}>
-                  + Queue
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
+      {/* Search Suggestions & Results List */}
+      {results.length > 0 && query.trim() && (
+        <div className="search-results-section">
+          <div className="results-header-row">
+            <span className="results-heading">Search Results ({results.length})</span>
+            <button className="chip-btn chip-btn-ghost" onClick={clearSearchInput}>
+              Dismiss
+            </button>
+          </div>
+          <ul className="result-list">
+            {results.map((r) => (
+              <li key={r.videoId} className="result-row">
+                <img src={r.thumbnail} alt="" className="result-thumb" />
+                <div className="result-meta">
+                  <p className="result-title">{r.title}</p>
+                  <p className="result-channel">{r.channel}</p>
+                </div>
+                <div className="result-actions">
+                  <button className="chip-btn" onClick={() => playNow(r)}>
+                    Play now
+                  </button>
+                  <button className="chip-btn chip-btn-ghost" onClick={() => playNext(r)} title="Set to play next in queue">
+                    ⚡ Play Next
+                  </button>
+                  <button className="chip-btn chip-btn-ghost" onClick={() => addQueue(r)}>
+                    + Queue
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
+      {/* Room Queue Section */}
       {queue.length > 0 && (
         <div className="queue">
           <div className="queue-header-row">
@@ -111,20 +153,31 @@ export default function SearchPanel({
             </button>
           </div>
           <ul className="result-list">
-            {queue.map((item) => (
+            {queue.map((item, index) => (
               <li
                 key={item.id}
                 className={`result-row ${item.videoId === currentVideoId ? "result-row-active" : ""}`}
               >
                 <img src={item.thumbnail} alt="" className="result-thumb" />
                 <div className="result-meta">
-                  <p className="result-title">{item.title}</p>
+                  <p className="result-title">
+                    {index === 0 ? "⚡ NEXT: " : ""}{item.title}
+                  </p>
                   <p className="result-channel">queued by {item.addedBy}</p>
                 </div>
                 <div className="result-actions">
                   <button className="chip-btn" onClick={() => playNow(item)}>
                     Play now
                   </button>
+                  {index > 0 && (
+                    <button
+                      className="chip-btn chip-btn-ghost"
+                      onClick={() => playNext(item)}
+                      title="Move song to top of queue"
+                    >
+                      ⚡ Move Next
+                    </button>
+                  )}
                   <button
                     className="chip-btn chip-btn-ghost chip-btn-remove"
                     onClick={() => removeItem(item.id)}

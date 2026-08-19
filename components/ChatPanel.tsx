@@ -24,7 +24,12 @@ export default function ChatPanel({
   const listRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<any>(null);
 
-  // Mark unread messages as seen when chat drawer is open
+  // Floating Draggable State (position coordinates)
+  const [pos, setPos] = useState({ x: 20, y: 80 });
+  const isDraggingRef = useRef(false);
+  const dragStartRef = useRef({ x: 0, y: 0 });
+
+  // Mark unread messages as seen when chat window is open
   useEffect(() => {
     if (open && messages.length > 0) {
       markMessagesSeen(selfName, messages);
@@ -37,6 +42,58 @@ export default function ChatPanel({
       listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
     }
   }, [messages, open, isPartnerTyping]);
+
+  // Mouse & Touch Drag Handlers
+  const startDrag = (clientX: number, clientY: number) => {
+    isDraggingRef.current = true;
+    dragStartRef.current = { x: clientX - pos.x, y: clientY - pos.y };
+  };
+
+  const onMouseDown = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).tagName === "BUTTON") return;
+    startDrag(e.clientX, e.clientY);
+  };
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    if ((e.target as HTMLElement).tagName === "BUTTON") return;
+    const touch = e.touches[0];
+    if (touch) startDrag(touch.clientX, touch.clientY);
+  };
+
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      const newX = Math.max(10, Math.min(window.innerWidth - 340, e.clientX - dragStartRef.current.x));
+      const newY = Math.max(10, Math.min(window.innerHeight - 440, e.clientY - dragStartRef.current.y));
+      setPos({ x: newX, y: newY });
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!isDraggingRef.current) return;
+      const touch = e.touches[0];
+      if (touch) {
+        const newX = Math.max(10, Math.min(window.innerWidth - 340, touch.clientX - dragStartRef.current.x));
+        const newY = Math.max(10, Math.min(window.innerHeight - 440, touch.clientY - dragStartRef.current.y));
+        setPos({ x: newX, y: newY });
+      }
+    };
+
+    const endDrag = () => {
+      isDraggingRef.current = false;
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", endDrag);
+    window.addEventListener("touchmove", onTouchMove);
+    window.addEventListener("touchend", endDrag);
+
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", endDrag);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", endDrag);
+    };
+  }, [pos]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -68,13 +125,29 @@ export default function ChatPanel({
     return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true });
   };
 
+  if (!open) return null;
+
   const partnerOnline = partnerPresence ? partnerPresence.online : false;
 
   return (
-    <div className={`chat-drawer ${open ? "chat-drawer-open" : ""}`}>
-      <div className="chat-header">
+    <div
+      className="chat-floating-window"
+      style={{
+        left: `${pos.x}px`,
+        top: `${pos.y}px`,
+      }}
+    >
+      <div
+        className="chat-header chat-header-draggable"
+        onMouseDown={onMouseDown}
+        onTouchStart={onTouchStart}
+        title="Click & drag to move window"
+      >
         <div className="chat-header-title">
-          <span>Notes to {partnerName}</span>
+          <div className="chat-header-drag-handle">
+            <span className="drag-icon">⋮⋮</span>
+            <span>Notes to {partnerName}</span>
+          </div>
           <span className={`chat-partner-status ${partnerOnline ? "status-online" : "status-offline"}`}>
             {partnerOnline ? "🟢 Online" : "🔴 Offline (Disconnected)"}
           </span>
