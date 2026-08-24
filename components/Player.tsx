@@ -622,9 +622,9 @@ export default function Player({
 
       {autoplayNotice && <div className="autoplay-banner">{autoplayNotice}</div>}
 
-      {/* Main YouTube Video Interface Screen */}
+      {/* Main YouTube Video Interface Screen (Hidden visually when isVideoHidden is true or mode === compact) */}
       <div
-        className={`youtube-video-container ${isVideoHidden ? "video-hidden" : ""}`}
+        className={`youtube-video-container ${isVideoHidden || mode === "compact" ? "video-hidden" : ""}`}
         onClick={initBackgroundAudioContext}
       >
         <div className="youtube-player-frame" ref={containerRef} />
@@ -650,6 +650,26 @@ export default function Player({
           </div>
         )}
       </div>
+
+      {/* Audio Player UI Card (Displayed in Compact Mode or when Video Frame is Hidden) */}
+      {(mode === "compact" || isVideoHidden) && (
+        <div className="compact-audio-card">
+          <div className="compact-art-wrapper">
+            {state?.thumbnail ? (
+              <img src={state.thumbnail} alt="" className="compact-art" />
+            ) : (
+              <div className="compact-art player-thumb-empty" />
+            )}
+            {isPlayingLocal && <span className="compact-vinyl-badge">🎵</span>}
+          </div>
+          <div className="compact-meta">
+            <p className="compact-title">{state?.title || "No Track Playing"}</p>
+            <p className="compact-sub">
+              {mode === "compact" ? "🎵 Audio Player UI (Background Mode Active)" : "🙈 Video Frame Hidden"}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Synchronized Control Bar */}
       <div className="player-body">
