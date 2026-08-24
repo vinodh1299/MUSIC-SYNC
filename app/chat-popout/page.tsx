@@ -80,7 +80,7 @@ function ChatMessageItem({
   return (
     <div
       id={`msg-${message.id}`}
-      className="chat-swipe-wrapper"
+      className={`chat-swipe-wrapper ${isSelf ? "chat-swipe-self" : "chat-swipe-partner"}`}
       onMouseDown={(e) => handleStart(e.clientX)}
       onMouseMove={(e) => handleMove(e.clientX)}
       onMouseUp={handleEnd}
@@ -97,7 +97,7 @@ function ChatMessageItem({
       </div>
 
       <div
-        className={`chat-msg ${isSelf ? "chat-msg-self" : ""} ${dragX > 0 ? "swiping" : ""}`}
+        className={`chat-msg ${isSelf ? "chat-msg-self" : "chat-msg-partner"} ${dragX > 0 ? "swiping" : ""}`}
         style={{
           transform: `translateX(${dragX}px)`,
           transition: isSwiping ? "none" : "transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.25)",
