@@ -27,6 +27,11 @@ export type ChatMessage = {
   ts: number | object;
   seenAt?: number | null;
   seenBy?: string[];
+  replyTo?: {
+    id?: string;
+    sender: string;
+    text: string;
+  } | null;
 };
 
 export type Presence = {
@@ -127,43 +132,73 @@ export async function clearQueue() {
   await remove(ref(getDb(), `rooms/${ROOM_ID}/queue`));
 }
 
-export async function sendChatMessage(sender: string, text: string) {
-  await push(chatRef(), {
+export async function sendChatMessage(
+  sender: string,
+  text: string,
+  replyTo?: { id?: string; sender: string; text: string } | null
+) {
+  const payload: any = {
     sender,
     text,
     ts: serverTimestamp(),
     seenAt: null,
     seenBy: [sender],
-  });
+  };
+  if (replyTo) {
+    payload.replyTo = {
+      id: replyTo.id || null,
+      sender: replyTo.sender,
+      text: replyTo.text,
+    };
+  }
+  await push(chatRef(), payload);
 }
 
 export async function markMessagesSeen(selfName: string, messages: ChatMessage[]) {
-  const db = getDb();
   const updates: Record<string, any> = {};
-  let updatedCount = 0;
+  let hasUpdates = false;
 
-  for (const msg of messages) {
-    if (msg.id && msg.sender !== selfName && (!msg.seenBy || !msg.seenBy.includes(selfName))) {
-      const seenBy = Array.from(new Set([...(msg.seenBy || []), selfName]));
-      updates[`rooms/${ROOM_ID}/chat/${msg.id}/seenBy`] = seenBy;
-      updates[`rooms/${ROOM_ID}/chat/${msg.id}/seenAt`] = Date.now();
-      updatedCount++;
+  for (const m of messages) {
+    if (m.id && m.sender !== selfName) {
+      const seenBy = m.seenBy || [];
+      if (!seenBy.includes(selfName)) {
+        updates[`rooms/${ROOM_ID}/chat/${m.id}/seenBy`] = [...seenBy, selfName];
+        updates[`rooms/${ROOM_ID}/chat/${m.id}/seenAt`] = Date.now();
+        hasUpdates = true;
+      }
     }
   }
 
-  if (updatedCount > 0) {
-    await update(ref(db), updates);
+  if (hasUpdates) {
+    await update(ref(getDb()), updates);
   }
 }
 
-// Registers presence for a partner and wires up auto-offline on disconnect.
 export function registerPresence(name: string) {
-  const myRef = presenceRef(name);
-  set(myRef, { online: true, listening: false, lastSeen: serverTimestamp() });
-  onDisconnect(myRef).set({ online: false, listening: false, lastSeen: serverTimestamp() });
+  const pRef = presenceRef(name);
+  const myPresence: Presence = {
+    online: true,
+    listening: false,
+    lastSeen: serverTimestamp(),
+  };
+
+  set(pRef, myPresence);
+  onDisconnect(pRef).set({
+    online: false,
+    listening: false,
+    lastSeen: serverTimestamp(),
+  });
+
   return {
-    setListening: (listening: boolean) =>
-      update(myRef, { listening, lastSeen: serverTimestamp() }),
-    goOffline: () => set(myRef, { online: false, listening: false, lastSeen: serverTimestamp() }),
+    setListening: (listening: boolean) => {
+      update(pRef, { listening, lastSeen: serverTimestamp() });
+    },
+    goOffline: () => {
+      set(pRef, {
+        online: false,
+        listening: false,
+        lastSeen: serverTimestamp(),
+      });
+    },
   };
 }

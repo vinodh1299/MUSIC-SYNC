@@ -1081,6 +1081,144 @@ body {
   color: #064e3b;
 }
 
+/* WhatsApp Drag-to-Reply Gesture & Quoted Messages */
+.chat-swipe-wrapper {
+  position: relative;
+  width: 100%;
+  user-select: none;
+  touch-action: pan-y;
+  cursor: grab;
+}
+
+.chat-swipe-wrapper:active {
+  cursor: grabbing;
+}
+
+.swipe-reply-indicator {
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+  font-size: 16px;
+  pointer-events: none;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.swipe-reply-indicator.threshold-active .swipe-icon {
+  animation: replyPop 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.25);
+  filter: drop-shadow(0 0 8px var(--accent));
+}
+
+@keyframes replyPop {
+  0% { transform: scale(0.8); }
+  50% { transform: scale(1.3); }
+  100% { transform: scale(1); }
+}
+
+.chat-msg.swiping {
+  will-change: transform;
+}
+
+/* Quoted Reply Block inside Chat Bubble */
+.chat-reply-quote {
+  background: rgba(0, 0, 0, 0.25);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.chat-msg-self .chat-reply-quote {
+  background: rgba(0, 0, 0, 0.12);
+  border-left-color: #07080f;
+}
+
+.chat-reply-quote:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.quote-sender {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
+  display: block;
+}
+
+.chat-msg-self .quote-sender {
+  color: #07080f;
+}
+
+.quote-text {
+  font-size: 11px;
+  margin: 2px 0 0 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.85;
+}
+
+/* Floating Replying Banner above Input Row */
+.replying-banner {
+  background: rgba(139, 149, 246, 0.12);
+  backdrop-filter: blur(16px);
+  border-top: 1px solid var(--glass-border);
+  border-left: 3px solid var(--accent);
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  animation: slideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.replying-meta {
+  flex: 1;
+  overflow: hidden;
+}
+
+.replying-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  display: block;
+}
+
+.replying-snippet {
+  font-size: 12px;
+  color: var(--text);
+  margin: 2px 0 0 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.replying-cancel {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.msg-highlight {
+  animation: targetPulse 1.8s ease;
+}
+
+@keyframes targetPulse {
+  0% { box-shadow: 0 0 0px var(--accent); }
+  30% { box-shadow: 0 0 24px var(--accent); border-color: var(--accent); }
+  100% { box-shadow: 0 0 0px var(--accent); }
+}
+
 /* Queue Header & Actions */
 .queue-header-row {
   display: flex;
