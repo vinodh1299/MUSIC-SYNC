@@ -87,10 +87,14 @@ export async function searchYouTube(query: string): Promise<YouTubeSearchResult[
 
 // Parses artist, movie/album, or core title from YouTube video title
 function parseTitleMetadata(rawTitle: string): { songName: string; artistOrAlbum: string } {
-  const parts = rawTitle
+  const clean = rawTitle
     .replace(/[\(\[\{].*?[\)\]\}]/g, "")
+    .replace(/(official|video|song|lyric|lyrics|audio|hd|4k|mv|full|remix|cover|karaoke|version)/gi, "")
+    .trim();
+
+  const parts = clean
     .split(/\||-|:|\bfrom\b/i)
-    .map((p) => p.replace(/(official|video|song|lyric|lyrics|audio|hd|4k|mv|full)/gi, "").trim())
+    .map((p) => p.trim())
     .filter(Boolean);
 
   const songName = parts[0] || rawTitle;
@@ -99,27 +103,30 @@ function parseTitleMetadata(rawTitle: string): { songName: string; artistOrAlbum
   return { songName, artistOrAlbum };
 }
 
-// Detect language from title keywords
-function detectLanguage(title: string): string {
+// Detect language and region from title keywords
+function detectLanguageAndRegion(title: string): { lang: string; isIndian: boolean } {
   const t = title.toLowerCase();
-  if (t.includes("kannada") || t.includes("kannad")) return "kannada";
-  if (t.includes("hindi") || t.includes("bollywood") || t.includes("arijit") || t.includes("sonu") || t.includes("shreya")) return "hindi";
-  if (t.includes("telugu") || t.includes("tollywood")) return "telugu";
-  if (t.includes("malayalam") || t.includes("mollywood")) return "malayalam";
-  return "tamil"; // Default to Tamil if Indian melody keywords detected
+  if (t.includes("kannada") || t.includes("kannad")) return { lang: "kannada", isIndian: true };
+  if (t.includes("hindi") || t.includes("bollywood") || t.includes("arijit") || t.includes("sonu") || t.includes("shreya") || t.includes("lata") || t.includes("kishore")) return { lang: "hindi", isIndian: true };
+  if (t.includes("telugu") || t.includes("tollywood")) return { lang: "telugu", isIndian: true };
+  if (t.includes("malayalam") || t.includes("mollywood")) return { lang: "malayalam", isIndian: true };
+  if (t.includes("tamil") || t.includes("kollywood") || t.includes("ar rahman") || t.includes("anirudh") || t.includes("yuvan") || t.includes("harris") || t.includes("ilaiyaraaja") || t.includes("sid sriram")) return { lang: "tamil", isIndian: true };
+
+  // Check for English / Western pop/rock music indicators
+  return { lang: "english", isIndian: false };
 }
 
-// Extract main song keywords to strictly exclude all variations of the same song
+// Extract main title keywords (length > 2) to strictly exclude all variations/remixes/covers of the SAME song
 function extractSongKeywords(title: string): string[] {
   return title
     .replace(/[\(\[\{].*?[\)\]\}]/g, "")
-    .replace(/(official|video|song|lyric|lyrics|audio|hd|4k|mv|full|remix|cover|karaoke)/gi, "")
+    .replace(/(official|video|song|lyric|lyrics|audio|hd|4k|mv|full|remix|cover|karaoke|version|remastered|live|acoustic|instrumental)/gi, "")
     .toLowerCase()
     .split(/[\s|:\-\,\.]+/)
-    .filter((w) => w.length > 2 && !["the", "and", "from", "with", "for", "you"].includes(w));
+    .filter((w) => w.length >= 3 && !["the", "and", "from", "with", "for", "you", "that", "this", "like"].includes(w));
 }
 
-// Smart Recommendation Engine: Finds NEW, DIFFERENT songs in the same language/genre
+// Smart Recommendation Engine: Finds NEW, DIFFERENT songs in the same genre, era, and style
 export async function fetchRecommendations(
   currentTitle: string,
   excludeVideoIds: string[] = []
@@ -127,29 +134,40 @@ export async function fetchRecommendations(
   const { songName, artistOrAlbum } = parseTitleMetadata(currentTitle);
   const excludeSet = new Set(excludeVideoIds);
   const songKeywords = extractSongKeywords(songName);
-  const lang = detectLanguage(currentTitle);
+  const { lang, isIndian } = detectLanguageAndRegion(currentTitle);
 
-  // Search queries focused on finding OTHER popular songs in the same language & style
-  const queries = [
-    `${lang} melody hit songs`,
-    `${artistOrAlbum} top songs ${lang}`,
-    `${lang} romantic hit songs`,
-    `${lang} super hit songs`,
-  ];
+  let queries: string[] = [];
+
+  if (!isIndian) {
+    // English / Global Music: Search by artist hits, genre classics, and similar era songs
+    queries = [
+      `${artistOrAlbum} top songs hits`,
+      `songs like ${songName}`,
+      `greatest pop classics hit songs`,
+      `popular pop rock hits playlist`,
+    ];
+  } else {
+    // Indian Regional Music: Search by language hits & artist melodies
+    queries = [
+      `${artistOrAlbum} super hit songs ${lang}`,
+      `${lang} melody hit songs`,
+      `${lang} romantic hit songs`,
+      `${lang} top chartbuster songs`,
+    ];
+  }
 
   for (const query of queries) {
     try {
       const results = await searchYouTube(query);
       const candidates = results.filter((item) => {
         if (excludeSet.has(item.videoId)) return false;
-        
-        // STRICT EXCLUSION: Ensure no core words from the current song title match to prevent playing remixes/covers/alternate uploads of the SAME song
+
+        // STRICT EXCLUSION: If candidate title contains ANY major keyword (3+ letters) from the original song's title, REJECT IT!
+        // This guarantees NO remixes, covers, live versions, or alternate uploads of the SAME song can ever play!
         const itemLower = item.title.toLowerCase();
-        const containsSameSongWord = songKeywords.some(
-          (word) => word.length >= 3 && itemLower.includes(word)
-        );
-        
-        return !containsSameSongWord;
+        const matchesOriginalWord = songKeywords.some((word) => itemLower.includes(word));
+
+        return !matchesOriginalWord;
       });
 
       if (candidates.length > 0) {
@@ -160,10 +178,15 @@ export async function fetchRecommendations(
     }
   }
 
-  // Fallback: Return any non-excluded popular track in the same language
+  // Fallback: Return any non-excluded popular hit track in the same genre/language
   try {
-    const fallbackResults = await searchYouTube(`${lang} hit songs`);
-    return fallbackResults.filter((item) => !excludeSet.has(item.videoId));
+    const fallbackQuery = isIndian ? `${lang} hit songs` : `popular music hits`;
+    const fallbackResults = await searchYouTube(fallbackQuery);
+    return fallbackResults.filter((item) => {
+      if (excludeSet.has(item.videoId)) return false;
+      const itemLower = item.title.toLowerCase();
+      return !songKeywords.some((word) => itemLower.includes(word));
+    });
   } catch {
     return [];
   }

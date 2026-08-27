@@ -52,8 +52,7 @@ export default function SearchPanel({
     // Automatically clear search input and suggestions once song starts playing
     clearSearchInput();
 
-    // If not already in queue, ensure it's in the room queue so next song continues smoothly
-    await addToQueue({ ...item, addedBy: selfName }, queue);
+    // Directly play the song WITHOUT adding it to queue automatically (queue is only modified when explicitly added)
     pushState(
       {
         videoId: item.videoId,
