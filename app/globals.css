@@ -466,6 +466,55 @@ body {
   height: 4px;
 }
 
+/* Spatial Volume Sound Control */
+.player-volume-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 4px 12px;
+  border-radius: 999px;
+  margin-left: 6px;
+  transition: border-color 0.25s ease;
+}
+
+.player-volume-control:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.player-volume-btn {
+  background: transparent;
+  border: none;
+  font-size: 15px;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease;
+}
+
+.player-volume-btn:hover {
+  transform: scale(1.15);
+}
+
+.player-volume-seek {
+  width: 76px;
+  accent-color: var(--accent);
+  height: 4px;
+  cursor: pointer;
+}
+
+.player-volume-text {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  font-family: var(--font-mono), monospace;
+  min-width: 32px;
+  text-align: right;
+}
+
 /* Spatial Glass Search Panel */
 .panel {
   background: var(--bg-glass);

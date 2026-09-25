@@ -44,30 +44,98 @@ export default function Player({
   const [audioStreamUrl, setAudioStreamUrl] = useState<string | null>(null);
   const [isVideoHidden, setIsVideoHidden] = useState(false);
 
+  // Sound / Volume Control State
+  const [volume, setVolumeState] = useState<number>(100);
+  const [isMuted, setIsMuted] = useState<boolean>(false);
+  const volumeRef = useRef<number>(100);
+  const isMutedRef = useRef<boolean>(false);
+
   const seekingRef = useRef(false);
   const loadedVideoIdRef = useRef<string | null>(null);
   const isHandlingEndRef = useRef(false);
   const playedHistoryRef = useRef<string[]>([]);
+
+  // Load volume from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedVol = localStorage.getItem("lovewave_volume");
+      if (savedVol !== null) {
+        const parsed = parseInt(savedVol, 10);
+        if (!isNaN(parsed) && parsed >= 0 && parsed <= 100) {
+          setVolumeState(parsed);
+          volumeRef.current = parsed;
+        }
+      }
+      const savedMute = localStorage.getItem("lovewave_muted");
+      if (savedMute !== null) {
+        const parsedMute = savedMute === "true";
+        setIsMuted(parsedMute);
+        isMutedRef.current = parsedMute;
+      }
+    } catch {}
+  }, []);
+
+  const changeVolume = (newVol: number) => {
+    setVolumeState(newVol);
+    volumeRef.current = newVol;
+    if (newVol > 0 && isMuted) {
+      setIsMuted(false);
+      isMutedRef.current = false;
+      try { localStorage.setItem("lovewave_muted", "false"); } catch {}
+    }
+    try { localStorage.setItem("lovewave_volume", newVol.toString()); } catch {}
+
+    const effectiveVol = isMuted ? 0 : newVol;
+    if (playerRef.current && typeof playerRef.current.setVolume === "function") {
+      playerRef.current.setVolume(effectiveVol);
+    }
+    if (htmlAudioRef.current) {
+      htmlAudioRef.current.volume = effectiveVol / 100;
+    }
+  };
+
+  const toggleMute = () => {
+    const nextMute = !isMuted;
+    setIsMuted(nextMute);
+    isMutedRef.current = nextMute;
+    try { localStorage.setItem("lovewave_muted", nextMute.toString()); } catch {}
+
+    const effectiveVol = nextMute ? 0 : volumeRef.current;
+    if (playerRef.current && typeof playerRef.current.setVolume === "function") {
+      playerRef.current.setVolume(effectiveVol);
+    }
+    if (htmlAudioRef.current) {
+      htmlAudioRef.current.volume = effectiveVol / 100;
+    }
+  };
 
   // Keep latest state ref up to date for event handlers
   useEffect(() => {
     latestStateRef.current = state;
   }, [state]);
 
-  // Audio Ducking on Chat Notification (Decreases song volume to 20%, then restores to 100%)
+  // Audio Ducking on Chat Notification (Decreases song volume to 20% of current setting, then restores to user setting)
   useEffect(() => {
     if (!duckTrigger || duckTrigger === 0) return;
     try {
+      const currentVol = isMutedRef.current ? 0 : volumeRef.current;
+      const duckedVol = Math.round(currentVol * 0.2);
       if (playerRef.current && typeof playerRef.current.setVolume === "function") {
-        playerRef.current.setVolume(20);
+        playerRef.current.setVolume(duckedVol);
         setTimeout(() => {
-          try { playerRef.current?.setVolume?.(100); } catch {}
+          try {
+            const targetVol = isMutedRef.current ? 0 : volumeRef.current;
+            playerRef.current?.setVolume?.(targetVol);
+          } catch {}
         }, 1600);
       }
       if (htmlAudioRef.current) {
-        htmlAudioRef.current.volume = 0.2;
+        htmlAudioRef.current.volume = duckedVol / 100;
         setTimeout(() => {
-          if (htmlAudioRef.current) htmlAudioRef.current.volume = 1.0;
+          if (htmlAudioRef.current) {
+            const targetVol = isMutedRef.current ? 0 : volumeRef.current;
+            htmlAudioRef.current.volume = targetVol / 100;
+          }
         }, 1600);
       }
     } catch (err) {
@@ -293,6 +361,9 @@ export default function Player({
           onReady: () => {
             setReady(true);
             readyRef.current = true;
+            if (playerRef.current?.setVolume) {
+              playerRef.current.setVolume(isMutedRef.current ? 0 : volumeRef.current);
+            }
           },
           onStateChange: (e: any) => {
             const playing = e.data === YT.PlayerState.PLAYING;
@@ -303,6 +374,9 @@ export default function Player({
 
             if (playing) {
               setNeedsGestureToSync(false);
+              if (playerRef.current?.setVolume) {
+                playerRef.current.setVolume(isMutedRef.current ? 0 : volumeRef.current);
+              }
             }
 
             // Sync user clicks directly on the YouTube video player iframe to Firebase
@@ -722,6 +796,30 @@ export default function Player({
             }}
           />
           <span className="player-time">{fmt(duration)}</span>
+
+          {/* Volume Sound Control Slider */}
+          <div className="player-volume-control">
+            <button
+              className="player-volume-btn"
+              onClick={toggleMute}
+              title={isMuted ? "Unmute sound" : "Mute sound"}
+              aria-label={isMuted ? "Unmute sound" : "Mute sound"}
+            >
+              {isMuted || volume === 0 ? "🔇" : volume < 35 ? "🔈" : volume < 70 ? "🔉" : "🔊"}
+            </button>
+            <input
+              className="player-volume-seek"
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={isMuted ? 0 : volume}
+              onChange={(e) => changeVolume(Number(e.target.value))}
+              title={`Volume: ${isMuted ? "Muted" : `${volume}%`}`}
+              aria-label="Volume slider"
+            />
+            <span className="player-volume-text">{isMuted ? "Muted" : `${volume}%`}</span>
+          </div>
         </div>
       </div>
     </div>
