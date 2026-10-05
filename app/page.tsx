@@ -53,6 +53,7 @@ function playNotificationChime() {
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [guestMode, setGuestMode] = useState(false);
 
   const [roomId, setRoomId] = useState<string | null>(null);
   const [selfName, setSelfName] = useState<string | null>(null);
@@ -77,7 +78,6 @@ export default function Home() {
       setUser(u);
       setAuthChecked(true);
 
-      // Auto-set selfName based on Google profile display name if available
       if (u?.displayName) {
         const firstName = u.displayName.split(" ")[0];
         setSelfName(firstName);
@@ -185,16 +185,22 @@ export default function Home() {
     );
   }
 
-  // Step 1: User Authentication Gate
-  if (!user) {
-    return <AuthModal user={user} onAuthSuccess={setUser} />;
+  // Step 1: User Authentication Gate (Google Sign-In or Guest Mode)
+  if (!user && !guestMode) {
+    return (
+      <AuthModal
+        user={user}
+        onAuthSuccess={setUser}
+        onGuestMode={() => setGuestMode(true)}
+      />
+    );
   }
 
   // Step 2: Room Selection / Creation Gate
   if (!roomId) {
     return (
       <RoomSelectionModal
-        user={user}
+        user={user || ({ displayName: selfName || "Partner", email: "Guest Mode" } as any)}
         activeRoomId={roomId}
         onSelectRoom={handleSelectRoom}
       />

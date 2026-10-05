@@ -6,9 +6,11 @@ import { getFirebaseAuth, GoogleAuthProvider, signInWithPopup, User } from "@/li
 export default function AuthModal({
   user,
   onAuthSuccess,
+  onGuestMode,
 }: {
   user: User | null;
   onAuthSuccess: (user: User) => void;
+  onGuestMode?: () => void;
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,8 +26,11 @@ export default function AuthModal({
       onAuthSuccess(result.user);
     } catch (err: any) {
       console.error("Google sign-in error:", err);
-      // Fallback message for authorized domain / pop-up issues
-      if (err.code === "auth/popup-closed-by-user") {
+      if (err.code === "auth/configuration-not-found") {
+        setError(
+          "Google Sign-In is not enabled in your Firebase Console yet. Enable 'Google' under Firebase Console > Authentication > Sign-in method, or click Quick Guest Sign-In below!"
+        );
+      } else if (err.code === "auth/popup-closed-by-user") {
         setError("Sign in window closed. Please try again.");
       } else if (err.code === "auth/unauthorized-domain") {
         setError("Domain not authorized in Firebase Console. Please add localhost to Authorized Domains.");
@@ -78,6 +83,16 @@ export default function AuthModal({
             </svg>
             <span>{loading ? "Signing in…" : "Sign in with Google"}</span>
           </button>
+
+          {onGuestMode && (
+            <button
+              className="guest-login-btn"
+              onClick={onGuestMode}
+              title="Enter Room with Name / Guest Mode"
+            >
+              ⚡ Quick Sign In (Partner / Guest Mode)
+            </button>
+          )}
         </div>
 
         <div className="auth-footer">
