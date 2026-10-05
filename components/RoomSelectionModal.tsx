@@ -156,7 +156,7 @@ export default function RoomSelectionModal({
               <input
                 type="text"
                 className="room-input-field"
-                placeholder="e.g. Vinodh & Keerthana's Music Room"
+                placeholder="e.g. Private Music Room"
                 value={createTitle}
                 onChange={(e) => setCreateTitle(e.target.value)}
               />

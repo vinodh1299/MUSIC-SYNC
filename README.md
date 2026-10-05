@@ -1,8 +1,8 @@
-# lovewave - Synced Music & Video Player for Vinodh & Keerthana
+# lovewave - Synced Music & Video Player
 
 > **Release**: 19 August 2026 - Compact Background Audio, YouTube Sync & Live iOS Lock Screen Integration
 
-A single, private room for Vinodh and Keerthana to listen to music and watch videos at the exact same time —
+A private room for users to listen to music and watch videos at the exact same time —
 with 2-way synced play/pause/seek, shared queue, and a live chat drawer.
 
 **Important technical note:** YT Music has no public API for embedding or controlling playback on

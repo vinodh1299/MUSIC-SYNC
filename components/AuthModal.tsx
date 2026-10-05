@@ -224,7 +224,7 @@ export default function AuthModal({
               <input
                 type="text"
                 className="auth-input-field"
-                placeholder="e.g. Vinodh or Keerthana"
+                placeholder="e.g. Alex or Sam"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required

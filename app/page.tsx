@@ -24,8 +24,8 @@ import {
 import { getFirebaseAuth, onAuthStateChanged, signOut } from "@/lib/firebase";
 
 const NAMES: [string, string] = [
-  process.env.NEXT_PUBLIC_PARTNER_A_NAME || "Vinodh",
-  process.env.NEXT_PUBLIC_PARTNER_B_NAME || "Keerthana",
+  process.env.NEXT_PUBLIC_PARTNER_A_NAME || "Partner A",
+  process.env.NEXT_PUBLIC_PARTNER_B_NAME || "Partner B",
 ];
 
 function playNotificationChime() {
