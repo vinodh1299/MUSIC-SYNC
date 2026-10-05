@@ -196,33 +196,58 @@ export default function AuthModal({
     try {
       const pwdHash = await hashPassword(password);
       let targetAccount: UserAccount | null = null;
+      let accountFound = false;
 
-      // Check registered users map
+      // 1. Check local registered users map
       const existingStr = localStorage.getItem("lovewave_registered_users");
       if (existingStr) {
         const usersMap = JSON.parse(existingStr);
         const record = usersMap[cleanEmail];
         if (record) {
-          // Compare password hash or plain text backward compatibility
+          accountFound = true;
           if (record.passwordHash === pwdHash || record.password === password) {
             targetAccount = record.account;
           } else {
-            setError("Incorrect password. Please try again.");
+            setError("Incorrect password. Please check and try again.");
             setLoading(false);
             return;
           }
         }
       }
 
+      // 2. Validate against Firebase Auth
       if (!targetAccount) {
-        // Build fallback account for first time logins
-        const firstName = cleanEmail.split("@")[0];
-        const capitalized = firstName.charAt(0).toUpperCase() + firstName.slice(1);
-        targetAccount = {
-          uid: `usr_${Date.now()}`,
-          displayName: capitalized,
-          email: cleanEmail,
-        };
+        try {
+          const auth = getFirebaseAuth();
+          const resFb = await signInWithEmailAndPassword(auth, cleanEmail, password);
+          if (resFb.user) {
+            accountFound = true;
+            targetAccount = {
+              uid: resFb.user.uid,
+              displayName: resFb.user.displayName || cleanEmail.split("@")[0],
+              email: resFb.user.email || cleanEmail,
+              photoURL: resFb.user.photoURL,
+            };
+          }
+        } catch (fbErr: any) {
+          const code = fbErr?.code || "";
+          if (code === "auth/wrong-password" || code === "auth/invalid-credential") {
+            setError("Incorrect password. Please check and try again.");
+            setLoading(false);
+            return;
+          }
+        }
+      }
+
+      // 3. If account was not found anywhere
+      if (!targetAccount) {
+        if (accountFound) {
+          setError("Incorrect password. Please check and try again.");
+        } else {
+          setError("Account not found for this email. Please click '✨ Create Account' to register first.");
+        }
+        setLoading(false);
+        return;
       }
 
       setPendingUserAccount(targetAccount);
