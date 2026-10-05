@@ -1480,6 +1480,23 @@ body {
   text-align: center;
 }
 
+.auth-config-guide {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(239, 68, 68, 0.4);
+  text-align: left;
+  font-size: 12px;
+}
+
+.auth-config-guide ol {
+  margin: 6px 0 0 18px;
+  padding: 0;
+}
+
+.auth-config-guide li {
+  margin-bottom: 4px;
+}
+
 /* Google Sign-In Button */
 .google-btn {
   width: 100%;

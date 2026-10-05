@@ -14,10 +14,12 @@ export default function AuthModal({
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isConfigError, setIsConfigError] = useState(false);
 
   const handleGoogleSignIn = async () => {
     setLoading(true);
     setError(null);
+    setIsConfigError(false);
     try {
       const auth = getFirebaseAuth();
       const provider = new GoogleAuthProvider();
@@ -26,14 +28,15 @@ export default function AuthModal({
       onAuthSuccess(result.user);
     } catch (err: any) {
       console.error("Google sign-in error:", err);
-      if (err.code === "auth/configuration-not-found") {
+      if (err.code === "auth/configuration-not-found" || err.message?.includes("CONFIGURATION_NOT_FOUND")) {
+        setIsConfigError(true);
         setError(
-          "Google Sign-In is not enabled in your Firebase Console yet. Enable 'Google' under Firebase Console > Authentication > Sign-in method, or click Quick Guest Sign-In below!"
+          "Firebase Authentication is not enabled in your Firebase Console yet. Please enable Google Auth in your Firebase Console or use Quick Partner Sign In below!"
         );
       } else if (err.code === "auth/popup-closed-by-user") {
         setError("Sign in window closed. Please try again.");
       } else if (err.code === "auth/unauthorized-domain") {
-        setError("Domain not authorized in Firebase Console. Please add localhost to Authorized Domains.");
+        setError("Domain not authorized in Firebase Console. Please add localhost & Vercel domain to Authorized Domains.");
       } else {
         setError(err.message || "Sign in failed. Please try again.");
       }
@@ -51,11 +54,25 @@ export default function AuthModal({
           <div className="auth-logo">🎵</div>
           <h2 className="auth-title">Welcome to Lovewave</h2>
           <p className="auth-subtitle">
-            Sign in with your Google account to access your private sync rooms, listen together in real-time, and chat securely.
+            Sign in to access your private sync rooms, listen together in real-time, and chat securely.
           </p>
         </div>
 
-        {error && <div className="auth-error-banner">⚠️ {error}</div>}
+        {error && (
+          <div className="auth-error-banner">
+            ⚠️ {error}
+            {isConfigError && (
+              <div className="auth-config-guide">
+                <strong>How to enable Google Sign-In in 30 seconds:</strong>
+                <ol>
+                  <li>Go to <strong>Firebase Console</strong> &gt; <strong>Authentication</strong></li>
+                  <li>Click <strong>&quot;Get Started&quot;</strong> &gt; Select <strong>Sign-in method</strong></li>
+                  <li>Click <strong>Google</strong> &gt; Enable &gt; Click <strong>Save</strong></li>
+                </ol>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="auth-actions">
           <button
@@ -88,9 +105,9 @@ export default function AuthModal({
             <button
               className="guest-login-btn"
               onClick={onGuestMode}
-              title="Enter Room with Name / Guest Mode"
+              title="Enter Room with Name / Partner Mode"
             >
-              ⚡ Quick Sign In (Partner / Guest Mode)
+              ⚡ Quick Sign In (Partner Mode)
             </button>
           )}
         </div>
