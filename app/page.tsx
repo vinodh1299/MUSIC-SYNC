@@ -15,6 +15,7 @@ import {
   QueueItem,
   registerPresence,
   subscribeChat,
+  subscribeAllPresence,
   subscribePresence,
   subscribeQueue,
   subscribeState,
@@ -60,7 +61,6 @@ export default function Home() {
   const [state, setState] = useState<PlaybackState | null>(null);
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [partnerPresence, setPartnerPresence] = useState<Presence | null>(null);
   const [isPartnerTyping, setIsPartnerTyping] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [toastNotification, setToastNotification] = useState<{ sender: string; text: string } | null>(null);
@@ -158,10 +158,25 @@ export default function Home() {
 
   const activeRoom = roomId || DEFAULT_ROOM_ID;
 
-  const partnerName = useMemo(
-    () => NAMES.find((n) => n !== selfName) || NAMES[1],
-    [selfName]
-  );
+  const [allPresences, setAllPresences] = useState<Record<string, Presence>>({});
+
+  // Subscribe to all presences in the active room
+  useEffect(() => {
+    if (!selfName || !roomId) return;
+    const unsubAll = subscribeAllPresence(activeRoom, setAllPresences);
+    return () => unsubAll();
+  }, [selfName, roomId, activeRoom]);
+
+  const partnerInfo = useMemo(() => {
+    if (!allPresences || !selfName) return { name: null, presence: null };
+    const entries = Object.entries(allPresences).filter(([name]) => name !== selfName);
+    if (entries.length === 0) return { name: null, presence: null };
+    const activeEntry = entries.find(([, p]) => p?.online) || entries[0];
+    return { name: activeEntry[0], presence: activeEntry[1] };
+  }, [allPresences, selfName]);
+
+  const partnerName = partnerInfo.name;
+  const partnerPresence = partnerInfo.presence;
 
   // Subscribe to room data when selfName and roomId are active
   useEffect(() => {
@@ -171,7 +186,7 @@ export default function Home() {
     const unsubChat = subscribeChat(activeRoom, (newMessages) => {
       if (newMessages.length > prevMsgCountRef.current && prevMsgCountRef.current > 0) {
         const latest = newMessages[newMessages.length - 1];
-        if (latest && latest.sender === partnerName) {
+        if (latest && partnerName && latest.sender === partnerName) {
           const isChatVisibleAndFocused =
             chatOpenRef.current &&
             typeof document !== "undefined" &&
@@ -189,15 +204,17 @@ export default function Home() {
       prevMsgCountRef.current = newMessages.length;
       setMessages(newMessages);
     });
-    const unsubPresence = subscribePresence(activeRoom, partnerName, setPartnerPresence);
-    const unsubTyping = subscribeTyping(activeRoom, partnerName, setIsPartnerTyping);
+
+    const unsubTyping = partnerName
+      ? subscribeTyping(activeRoom, partnerName, setIsPartnerTyping)
+      : () => {};
+
     const presence = registerPresence(activeRoom, selfName);
 
     return () => {
       unsubState();
       unsubQueue();
       unsubChat();
-      unsubPresence();
       unsubTyping();
       presence.goOffline();
     };

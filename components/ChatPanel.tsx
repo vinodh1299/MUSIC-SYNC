@@ -248,7 +248,10 @@ export default function ChatPanel({
         <div className="chat-header-title">
           <div className="chat-header-drag-handle">
             {isFloating && <span className="drag-icon">⋮⋮</span>}
-            <span>Chat with {partnerName}</span>
+            <span>Chat {partnerName ? `with ${partnerName}` : ""}</span>
+            <span style={{ fontSize: "11px", background: "rgba(16, 185, 129, 0.15)", color: "#10b981", border: "1px solid rgba(16, 185, 129, 0.3)", padding: "2px 6px", borderRadius: "10px", marginLeft: "6px", fontWeight: "600" }}>
+              🔒 End-to-End Encrypted
+            </span>
           </div>
           <span
             className={`chat-partner-status ${

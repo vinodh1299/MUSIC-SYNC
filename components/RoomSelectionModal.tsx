@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createRoom, generateRoomCode } from "@/lib/room";
+import { createRoom, generateRoomCode, joinRoomAuthorized } from "@/lib/room";
 import { UserAccount } from "@/components/AuthModal";
 
 export default function RoomSelectionModal({
@@ -39,16 +39,30 @@ export default function RoomSelectionModal({
     } catch {}
   };
 
-  const handleJoin = (e: React.FormEvent) => {
+  const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
     const clean = joinCode.trim().toUpperCase();
     if (!clean) {
       setError("Please enter a valid Room Code");
       return;
     }
+
+    setLoading(true);
     setError(null);
+
+    const displayName = user?.displayName || user?.email || "User";
+    const userEmail = user?.email || displayName;
+
+    const authCheck = await joinRoomAuthorized(clean, displayName, userEmail);
+    if (!authCheck.success) {
+      setError(authCheck.message || "Cannot join this room.");
+      setLoading(false);
+      return;
+    }
+
     addRecentRoom(clean);
     onSelectRoom(clean);
+    setLoading(false);
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -57,8 +71,9 @@ export default function RoomSelectionModal({
     setError(null);
     try {
       const displayName = user?.displayName || user?.email || "Host";
+      const userEmail = user?.email || displayName;
       const codeToUse = customCode.trim() ? customCode.trim().toUpperCase() : generateRoomCode();
-      const room = await createRoom(codeToUse, createTitle || "Private Music Lounge", displayName);
+      const room = await createRoom(codeToUse, createTitle || "Private Music Lounge", displayName, userEmail);
       addRecentRoom(room.code);
       onSelectRoom(room.code);
     } catch (err: any) {

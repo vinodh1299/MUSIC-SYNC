@@ -15,7 +15,7 @@ export default function ConnectionThread({
   onSignOut,
 }: {
   selfName: string;
-  partnerName: string;
+  partnerName: string | null;
   partnerPresence: Presence | null;
   roomId: string;
   user: UserAccount | null;
@@ -23,8 +23,9 @@ export default function ConnectionThread({
   onSignOut: () => void;
 }) {
   const [copied, setCopied] = useState(false);
-  const partnerOnline = !!partnerPresence?.online;
-  const bothListening = partnerOnline && !!partnerPresence?.listening;
+  const hasPartner = Boolean(partnerName);
+  const partnerOnline = hasPartner && Boolean(partnerPresence?.online);
+  const bothListening = partnerOnline && Boolean(partnerPresence?.listening);
 
   const copyRoomLink = () => {
     if (typeof window === "undefined") return;
@@ -72,7 +73,13 @@ export default function ConnectionThread({
         <div className="thread-node">
           <span className={`thread-dot ${partnerOnline ? "thread-dot-on" : "thread-dot-off"}`} />
           <span className="thread-name">
-            {partnerName} {partnerOnline ? "🟢 Online" : "🔴 Offline"}
+            {hasPartner ? (
+              `${partnerName} ${partnerOnline ? "🟢 Online" : "🔴 Offline"}`
+            ) : (
+              <span style={{ opacity: 0.75, fontStyle: "italic" }}>
+                ⏳ Waiting for partner...
+              </span>
+            )}
           </span>
         </div>
       </div>

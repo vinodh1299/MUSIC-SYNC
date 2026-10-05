@@ -7,6 +7,7 @@ import {
   Presence,
   registerPresence,
   subscribeChat,
+  subscribeAllPresence,
   subscribePresence,
   subscribeTyping,
   sendChatMessage,
@@ -137,7 +138,7 @@ export default function ChatPopoutPage() {
   const [selfName, setSelfName] = useState<string | null>(null);
   const [roomId, setRoomId] = useState<string>(DEFAULT_ROOM_ID);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [partnerPresence, setPartnerPresence] = useState<Presence | null>(null);
+  const [allPresences, setAllPresences] = useState<Record<string, Presence>>({});
   const [isPartnerTyping, setIsPartnerTyping] = useState(false);
   const [text, setText] = useState("");
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
@@ -145,15 +146,17 @@ export default function ChatPopoutPage() {
   const typingTimeoutRef = useRef<any>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const partnerName = useMemo(
-    () => NAMES.find((n) => n !== selfName) || NAMES[1],
-    [selfName]
-  );
-
   useEffect(() => {
     if (typeof window !== "undefined") {
+      const storedUserStr = localStorage.getItem("lovewave_user_account");
+      if (storedUserStr) {
+        try {
+          const u = JSON.parse(storedUserStr);
+          if (u.displayName) setSelfName(u.displayName);
+        } catch {}
+      }
       const stored = localStorage.getItem("lovewave_identity");
-      if (stored && NAMES.includes(stored)) {
+      if (!selfName && stored && NAMES.includes(stored)) {
         setSelfName(stored);
       }
       const params = new URLSearchParams(window.location.search);
@@ -162,7 +165,24 @@ export default function ChatPopoutPage() {
         setRoomId(roomParam.trim().toUpperCase());
       }
     }
-  }, []);
+  }, [selfName]);
+
+  useEffect(() => {
+    if (!selfName || !roomId) return;
+    const unsubAll = subscribeAllPresence(roomId, setAllPresences);
+    return () => unsubAll();
+  }, [selfName, roomId]);
+
+  const partnerInfo = useMemo(() => {
+    if (!allPresences || !selfName) return { name: null, presence: null };
+    const entries = Object.entries(allPresences).filter(([name]) => name !== selfName);
+    if (entries.length === 0) return { name: null, presence: null };
+    const activeEntry = entries.find(([, p]) => p?.online) || entries[0];
+    return { name: activeEntry[0], presence: activeEntry[1] };
+  }, [allPresences, selfName]);
+
+  const partnerName = partnerInfo.name || "Partner";
+  const partnerPresence = partnerInfo.presence;
 
   useEffect(() => {
     if (!selfName) return;
@@ -170,13 +190,13 @@ export default function ChatPopoutPage() {
       setMessages(newMsgs);
       markMessagesSeen(roomId, selfName, newMsgs);
     });
-    const unsubPresence = subscribePresence(roomId, partnerName, setPartnerPresence);
-    const unsubTyping = subscribeTyping(roomId, partnerName, setIsPartnerTyping);
+    const unsubTyping = partnerName
+      ? subscribeTyping(roomId, partnerName, setIsPartnerTyping)
+      : () => {};
     const presence = registerPresence(roomId, selfName);
 
     return () => {
       unsubChat();
-      unsubPresence();
       unsubTyping();
       presence.goOffline();
     };
