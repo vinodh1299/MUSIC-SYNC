@@ -73,7 +73,7 @@ export default function Home() {
   // Restore permanent user session on mount
   useEffect(() => {
     try {
-      const savedAcc = localStorage.getItem("lovewave_user_account");
+      const savedAcc = localStorage.getItem("duotone_user_account") || localStorage.getItem("lovewave_user_account");
       if (savedAcc) {
         const parsed = JSON.parse(savedAcc);
         setUser(parsed);
@@ -95,7 +95,10 @@ export default function Home() {
           photoURL: u.photoURL,
         };
         setUser(acc);
-        try { localStorage.setItem("lovewave_user_account", JSON.stringify(acc)); } catch {}
+        try {
+          localStorage.setItem("duotone_user_account", JSON.stringify(acc));
+          localStorage.setItem("lovewave_user_account", JSON.stringify(acc));
+        } catch {}
         if (acc.displayName) {
           setSelfName(acc.displayName.split(" ")[0]);
         }
@@ -116,10 +119,13 @@ export default function Home() {
     if (roomFromUrl) {
       const clean = roomFromUrl.trim().toUpperCase();
       setRoomId(clean);
-      try { localStorage.setItem("lovewave_active_room", clean); } catch {}
+      try {
+        localStorage.setItem("duotone_active_room", clean);
+        localStorage.setItem("lovewave_active_room", clean);
+      } catch {}
     } else {
       try {
-        const saved = localStorage.getItem("lovewave_active_room");
+        const saved = localStorage.getItem("duotone_active_room") || localStorage.getItem("lovewave_active_room");
         if (saved) setRoomId(saved);
       } catch {}
     }
@@ -131,24 +137,35 @@ export default function Home() {
       const firstName = acc.displayName.split(" ")[0];
       setSelfName(firstName);
     }
-    try { localStorage.setItem("lovewave_user_account", JSON.stringify(acc)); } catch {}
+    try {
+      localStorage.setItem("duotone_user_account", JSON.stringify(acc));
+      localStorage.setItem("lovewave_user_account", JSON.stringify(acc));
+    } catch {}
   };
 
   const handleSelectRoom = (code: string) => {
     const clean = code.trim().toUpperCase() || DEFAULT_ROOM_ID;
     setRoomId(clean);
-    try { localStorage.setItem("lovewave_active_room", clean); } catch {}
+    try {
+      localStorage.setItem("duotone_active_room", clean);
+      localStorage.setItem("lovewave_active_room", clean);
+    } catch {}
   };
 
   const handleSwitchRoom = () => {
     setRoomId(null);
-    try { localStorage.removeItem("lovewave_active_room"); } catch {}
+    try {
+      localStorage.removeItem("duotone_active_room");
+      localStorage.removeItem("lovewave_active_room");
+    } catch {}
   };
 
   const handleSignOut = () => {
     try { signOut(getFirebaseAuth()); } catch {}
     try {
+      localStorage.removeItem("duotone_user_account");
       localStorage.removeItem("lovewave_user_account");
+      localStorage.removeItem("duotone_active_room");
       localStorage.removeItem("lovewave_active_room");
     } catch {}
     setUser(null);
@@ -238,7 +255,7 @@ export default function Home() {
     return (
       <div className="app-loading-screen">
         <div className="auth-logo spinner-logo">🎵</div>
-        <p className="app-loading-text">Loading Lovewave Sync…</p>
+        <p className="app-loading-text">Loading Duotone Sync…</p>
       </div>
     );
   }

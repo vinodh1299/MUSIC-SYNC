@@ -23,7 +23,7 @@ export default function RoomSelectionModal({
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem("lovewave_recent_rooms");
+      const saved = localStorage.getItem("duotone_recent_rooms") || localStorage.getItem("lovewave_recent_rooms");
       if (saved) {
         setRecentRooms(JSON.parse(saved));
       }
@@ -35,6 +35,7 @@ export default function RoomSelectionModal({
       const clean = code.trim().toUpperCase();
       const next = [clean, ...recentRooms.filter((r) => r !== clean)].slice(0, 5);
       setRecentRooms(next);
+      localStorage.setItem("duotone_recent_rooms", JSON.stringify(next));
       localStorage.setItem("lovewave_recent_rooms", JSON.stringify(next));
     } catch {}
   };

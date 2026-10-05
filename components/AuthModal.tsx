@@ -42,6 +42,7 @@ export default function AuthModal({
 
   const saveLocalAccount = (acc: UserAccount) => {
     try {
+      localStorage.setItem("duotone_user_account", JSON.stringify(acc));
       localStorage.setItem("lovewave_user_account", JSON.stringify(acc));
     } catch {}
   };
@@ -140,13 +141,14 @@ export default function AuthModal({
 
       // Store in local registered users map with HASHED password
       try {
-        const existingStr = localStorage.getItem("lovewave_registered_users");
+        const existingStr = localStorage.getItem("duotone_registered_users") || localStorage.getItem("lovewave_registered_users");
         const usersMap = existingStr ? JSON.parse(existingStr) : {};
         usersMap[pendingUserAccount.email] = {
           name: pendingUserAccount.displayName,
           passwordHash: pendingPasswordHash,
           account: pendingUserAccount,
         };
+        localStorage.setItem("duotone_registered_users", JSON.stringify(usersMap));
         localStorage.setItem("lovewave_registered_users", JSON.stringify(usersMap));
       } catch {}
 
@@ -217,7 +219,7 @@ export default function AuthModal({
       let accountFound = false;
 
       // 1. Check local registered users map
-      const existingStr = localStorage.getItem("lovewave_registered_users");
+      const existingStr = localStorage.getItem("duotone_registered_users") || localStorage.getItem("lovewave_registered_users");
       if (existingStr) {
         const usersMap = JSON.parse(existingStr);
         const record = usersMap[cleanEmail];
@@ -377,7 +379,7 @@ export default function AuthModal({
       <div className="auth-card">
         <div className="auth-header">
           <div className="auth-logo">🎵</div>
-          <h2 className="auth-title">Welcome to Lovewave</h2>
+          <h2 className="auth-title">Welcome to Duotone</h2>
           <p className="auth-subtitle">
             Create an account or sign in with 2-step email verification to access your private sync rooms.
           </p>

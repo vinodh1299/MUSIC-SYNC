@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "lovewave — listen together",
+  title: "Duotone — listen together",
   description: "A shared room for two people, far apart, listening to the same song.",
 };
 

@@ -148,19 +148,19 @@ export default function ChatPopoutPage() {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const storedUserStr = localStorage.getItem("lovewave_user_account");
+      const storedUserStr = localStorage.getItem("duotone_user_account") || localStorage.getItem("lovewave_user_account");
       if (storedUserStr) {
         try {
           const u = JSON.parse(storedUserStr);
           if (u.displayName) setSelfName(u.displayName);
         } catch {}
       }
-      const stored = localStorage.getItem("lovewave_identity");
+      const stored = localStorage.getItem("duotone_identity") || localStorage.getItem("lovewave_identity");
       if (!selfName && stored && NAMES.includes(stored)) {
         setSelfName(stored);
       }
       const params = new URLSearchParams(window.location.search);
-      const roomParam = params.get("room") || localStorage.getItem("lovewave_active_room");
+      const roomParam = params.get("room") || localStorage.getItem("duotone_active_room") || localStorage.getItem("lovewave_active_room");
       if (roomParam) {
         setRoomId(roomParam.trim().toUpperCase());
       }
@@ -263,6 +263,7 @@ export default function ChatPopoutPage() {
           names={NAMES}
           onReady={(name) => {
             if (typeof window !== "undefined") {
+              localStorage.setItem("duotone_identity", name);
               localStorage.setItem("lovewave_identity", name);
             }
             setSelfName(name);

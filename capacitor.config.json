@@ -1,6 +1,6 @@
 {
   "appId": "com.lovewave.musicsync",
-  "appName": "Lovewave",
+  "appName": "Duotone",
   "webDir": "out",
   "server": {
     "url": "https://music-sync-6unurykc8-vinodh1299s-projects.vercel.app",

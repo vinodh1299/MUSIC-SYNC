@@ -36,16 +36,16 @@ export async function POST(req: Request) {
 
     const subject =
       type === "signup"
-        ? "🔑 lovewave - Verify Your Email Address"
-        : "🔐 lovewave - 2-Step Verification Security Code";
+        ? "🔑 Duotone - Verify Your Email Address"
+        : "🔐 Duotone - 2-Step Verification Security Code";
 
     const textContent = `Hello ${name || "Music Lover"},\n\nYour 6-digit verification code is: ${code}\n\nThis code is valid for 10 minutes. Please enter it to complete your ${
       type === "signup" ? "account registration" : "sign in"
-    }.\n\nIf you did not request this, please ignore this email.\n\nLovewave Music Sync`;
+    }.\n\nIf you did not request this, please ignore this email.\n\nDuotone Music Sync`;
 
     const htmlContent = `
       <div style="font-family: sans-serif; padding: 24px; background: #0f172a; color: #f8fafc; border-radius: 12px; max-width: 480px; margin: 0 auto; border: 1px solid #1e293b;">
-        <h2 style="color: #ec4899; margin-top: 0; font-size: 22px;">🎵 lovewave</h2>
+        <h2 style="color: #ec4899; margin-top: 0; font-size: 22px;">🎵 Duotone</h2>
         <p style="font-size: 16px; color: #cbd5e1; margin-bottom: 8px;">Hello ${name || "Music Lover"},</p>
         <p style="font-size: 15px; color: #94a3b8; margin-top: 0;">Your 6-digit security code for <strong>${
           type === "signup" ? "Email Verification" : "2-Step Verification"
@@ -72,7 +72,7 @@ export async function POST(req: Request) {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            from: process.env.SMTP_FROM || "Lovewave <onboarding@resend.dev>",
+            from: process.env.SMTP_FROM || "Duotone <onboarding@resend.dev>",
             to: [cleanEmail],
             subject,
             text: textContent,
@@ -106,7 +106,7 @@ export async function POST(req: Request) {
         });
 
         await transporter.sendMail({
-          from: `"Lovewave Security" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
+          from: `"Duotone Security" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
           to: cleanEmail,
           subject,
           text: textContent,

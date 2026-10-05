@@ -166,7 +166,7 @@ export default function ChatPanel({
       onClose();
       window.open(
         `/chat-popout?room=${encodeURIComponent(roomId)}`,
-        "LovewaveChatWindow",
+        "DuotoneChatWindow",
         "width=380,height=560,resizable=yes,scrollbars=yes,status=no,location=no,toolbar=no"
       );
     }

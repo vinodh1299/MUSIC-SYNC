@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 
-export const STORAGE_KEY = "lovewave:identity";
+export const STORAGE_KEY = "duotone:identity";
+export const LEGACY_STORAGE_KEY = "lovewave:identity";
 
 export function clearIdentity() {
   if (typeof window !== "undefined") {
     window.localStorage.removeItem(STORAGE_KEY);
+    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
     window.location.reload();
   }
 }
@@ -22,7 +24,7 @@ export default function IdentityGate({
   const [saved, setSaved] = useState<string | null>(null);
 
   useEffect(() => {
-    const existing = window.localStorage.getItem(STORAGE_KEY);
+    const existing = window.localStorage.getItem(STORAGE_KEY) || window.localStorage.getItem(LEGACY_STORAGE_KEY);
     if (existing) {
       if (names.includes(existing)) {
         setSaved(existing);
@@ -30,6 +32,7 @@ export default function IdentityGate({
       } else {
         // Clear obsolete cached names (like Alex/Sam)
         window.localStorage.removeItem(STORAGE_KEY);
+        window.localStorage.removeItem(LEGACY_STORAGE_KEY);
       }
     }
     setChecked(true);

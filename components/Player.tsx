@@ -60,7 +60,7 @@ export default function Player({
   // Load volume from localStorage on mount
   useEffect(() => {
     try {
-      const savedVol = localStorage.getItem("lovewave_volume");
+      const savedVol = localStorage.getItem("duotone_volume") || localStorage.getItem("lovewave_volume");
       if (savedVol !== null) {
         const parsed = parseInt(savedVol, 10);
         if (!isNaN(parsed) && parsed >= 0 && parsed <= 100) {
@@ -68,7 +68,7 @@ export default function Player({
           volumeRef.current = parsed;
         }
       }
-      const savedMute = localStorage.getItem("lovewave_muted");
+      const savedMute = localStorage.getItem("duotone_muted") || localStorage.getItem("lovewave_muted");
       if (savedMute !== null) {
         const parsedMute = savedMute === "true";
         setIsMuted(parsedMute);
@@ -83,9 +83,15 @@ export default function Player({
     if (newVol > 0 && isMuted) {
       setIsMuted(false);
       isMutedRef.current = false;
-      try { localStorage.setItem("lovewave_muted", "false"); } catch {}
+      try {
+        localStorage.setItem("duotone_muted", "false");
+        localStorage.setItem("lovewave_muted", "false");
+      } catch {}
     }
-    try { localStorage.setItem("lovewave_volume", newVol.toString()); } catch {}
+    try {
+      localStorage.setItem("duotone_volume", newVol.toString());
+      localStorage.setItem("lovewave_volume", newVol.toString());
+    } catch {}
 
     const effectiveVol = isMuted ? 0 : newVol;
     if (playerRef.current && typeof playerRef.current.setVolume === "function") {
@@ -100,7 +106,10 @@ export default function Player({
     const nextMute = !isMuted;
     setIsMuted(nextMute);
     isMutedRef.current = nextMute;
-    try { localStorage.setItem("lovewave_muted", nextMute.toString()); } catch {}
+    try {
+      localStorage.setItem("duotone_muted", nextMute.toString());
+      localStorage.setItem("lovewave_muted", nextMute.toString());
+    } catch {}
 
     const effectiveVol = nextMute ? 0 : volumeRef.current;
     if (playerRef.current && typeof playerRef.current.setVolume === "function") {
@@ -273,7 +282,7 @@ export default function Player({
     if (state?.title) {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: state.title,
-        artist: state.updatedBy ? `Synced with ${state.updatedBy}` : "Lovewave Music",
+        artist: state.updatedBy ? `Synced with ${state.updatedBy}` : "Duotone Music",
         artwork: state.thumbnail
           ? [
               { src: state.thumbnail, sizes: "96x96", type: "image/jpeg" },
