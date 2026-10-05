@@ -18,6 +18,11 @@ import {
   signInWithPopup,
   signOut,
   onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  updateProfile,
+  setPersistence,
+  browserLocalPersistence,
   User,
 } from "firebase/auth";
 
@@ -41,7 +46,11 @@ export function getDb() {
 }
 
 export function getFirebaseAuth() {
-  return getAuth(getFirebaseApp());
+  const auth = getAuth(getFirebaseApp());
+  try {
+    setPersistence(auth, browserLocalPersistence);
+  } catch {}
+  return auth;
 }
 
 export {
@@ -57,8 +66,13 @@ export {
   signInWithPopup,
   signOut,
   onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  updateProfile,
+  setPersistence,
+  browserLocalPersistence,
 };
 export type { User };
 
-// Default fallback room ID for guest mode / backward compatibility
+// Default fallback room ID for backward compatibility
 export const DEFAULT_ROOM_ID = "main";

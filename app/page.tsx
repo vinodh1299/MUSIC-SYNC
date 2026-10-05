@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import AuthModal from "@/components/AuthModal";
+import AuthModal, { UserAccount } from "@/components/AuthModal";
 import RoomSelectionModal from "@/components/RoomSelectionModal";
 import IdentityGate from "@/components/IdentityGate";
 import ConnectionThread from "@/components/ConnectionThread";
@@ -21,7 +21,7 @@ import {
   subscribeTyping,
   DEFAULT_ROOM_ID,
 } from "@/lib/room";
-import { getFirebaseAuth, onAuthStateChanged, User } from "@/lib/firebase";
+import { getFirebaseAuth, onAuthStateChanged, signOut } from "@/lib/firebase";
 
 const NAMES: [string, string] = [
   process.env.NEXT_PUBLIC_PARTNER_A_NAME || "Vinodh",
@@ -51,9 +51,8 @@ function playNotificationChime() {
 }
 
 export default function Home() {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<UserAccount | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
-  const [guestMode, setGuestMode] = useState(false);
 
   const [roomId, setRoomId] = useState<string | null>(null);
   const [selfName, setSelfName] = useState<string | null>(null);
@@ -71,18 +70,40 @@ export default function Home() {
   const chatOpenRef = useRef(chatOpen);
   chatOpenRef.current = chatOpen;
 
-  // Listen to Firebase Auth state
+  // Restore permanent user session on mount
   useEffect(() => {
+    try {
+      const savedAcc = localStorage.getItem("lovewave_user_account");
+      if (savedAcc) {
+        const parsed = JSON.parse(savedAcc);
+        setUser(parsed);
+        if (parsed.displayName) {
+          const firstName = parsed.displayName.split(" ")[0];
+          setSelfName(firstName);
+        }
+      }
+    } catch {}
+
+    // Listen to Firebase Auth state as well
     const auth = getFirebaseAuth();
     const unsub = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      setAuthChecked(true);
-
-      if (u?.displayName) {
-        const firstName = u.displayName.split(" ")[0];
-        setSelfName(firstName);
+      if (u) {
+        const acc: UserAccount = {
+          uid: u.uid,
+          displayName: u.displayName || u.email?.split("@")[0] || "User",
+          email: u.email || "",
+          photoURL: u.photoURL,
+        };
+        setUser(acc);
+        try { localStorage.setItem("lovewave_user_account", JSON.stringify(acc)); } catch {}
+        if (acc.displayName) {
+          setSelfName(acc.displayName.split(" ")[0]);
+        }
       }
+      setAuthChecked(true);
     });
+
+    setAuthChecked(true);
     return () => unsub();
   }, []);
 
@@ -104,6 +125,15 @@ export default function Home() {
     }
   }, []);
 
+  const handleAuthSuccess = (acc: UserAccount) => {
+    setUser(acc);
+    if (acc.displayName) {
+      const firstName = acc.displayName.split(" ")[0];
+      setSelfName(firstName);
+    }
+    try { localStorage.setItem("lovewave_user_account", JSON.stringify(acc)); } catch {}
+  };
+
   const handleSelectRoom = (code: string) => {
     const clean = code.trim().toUpperCase() || DEFAULT_ROOM_ID;
     setRoomId(clean);
@@ -113,6 +143,17 @@ export default function Home() {
   const handleSwitchRoom = () => {
     setRoomId(null);
     try { localStorage.removeItem("lovewave_active_room"); } catch {}
+  };
+
+  const handleSignOut = () => {
+    try { signOut(getFirebaseAuth()); } catch {}
+    try {
+      localStorage.removeItem("lovewave_user_account");
+      localStorage.removeItem("lovewave_active_room");
+    } catch {}
+    setUser(null);
+    setRoomId(null);
+    setSelfName(null);
   };
 
   const activeRoom = roomId || DEFAULT_ROOM_ID;
@@ -185,13 +226,12 @@ export default function Home() {
     );
   }
 
-  // Step 1: User Authentication Gate (Google Sign-In or Guest Mode)
-  if (!user && !guestMode) {
+  // Step 1: User Account Sign-Up / Sign-In Gate
+  if (!user) {
     return (
       <AuthModal
         user={user}
-        onAuthSuccess={setUser}
-        onGuestMode={() => setGuestMode(true)}
+        onAuthSuccess={handleAuthSuccess}
       />
     );
   }
@@ -200,7 +240,7 @@ export default function Home() {
   if (!roomId) {
     return (
       <RoomSelectionModal
-        user={user || ({ displayName: selfName || "Partner", email: "Guest Mode" } as any)}
+        user={user}
         activeRoomId={roomId}
         onSelectRoom={handleSelectRoom}
       />
@@ -234,6 +274,7 @@ export default function Home() {
           roomId={activeRoom}
           user={user}
           onSwitchRoom={handleSwitchRoom}
+          onSignOut={handleSignOut}
         />
         <button
           className={`chat-toggle ${unreadCount > 0 ? "has-unread" : ""}`}

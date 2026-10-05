@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { createRoom, generateRoomCode } from "@/lib/room";
-import { User } from "@/lib/firebase";
+import { UserAccount } from "@/components/AuthModal";
 
 export default function RoomSelectionModal({
   user,
   activeRoomId,
   onSelectRoom,
 }: {
-  user: User | null;
+  user: UserAccount | null;
   activeRoomId: string | null;
   onSelectRoom: (roomId: string) => void;
 }) {

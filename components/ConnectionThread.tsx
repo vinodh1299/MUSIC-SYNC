@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { Presence } from "@/lib/room";
-import { User, getFirebaseAuth, signOut } from "@/lib/firebase";
+import { UserAccount } from "@/components/AuthModal";
+import { getFirebaseAuth, signOut } from "@/lib/firebase";
 
 export default function ConnectionThread({
   selfName,
@@ -11,13 +12,15 @@ export default function ConnectionThread({
   roomId,
   user,
   onSwitchRoom,
+  onSignOut,
 }: {
   selfName: string;
   partnerName: string;
   partnerPresence: Presence | null;
   roomId: string;
-  user: User | null;
+  user: UserAccount | null;
   onSwitchRoom: () => void;
+  onSignOut: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const partnerOnline = !!partnerPresence?.online;
@@ -32,12 +35,11 @@ export default function ConnectionThread({
     });
   };
 
-  const handleSignOut = () => {
+  const handleSignOutClick = () => {
     try {
       signOut(getFirebaseAuth());
-    } catch (err) {
-      console.error("Sign out error:", err);
-    }
+    } catch {}
+    onSignOut();
   };
 
   return (
@@ -89,7 +91,7 @@ export default function ConnectionThread({
         </button>
 
         {user && (
-          <button className="header-action-btn danger-btn" onClick={handleSignOut} title="Sign Out">
+          <button className="header-action-btn danger-btn" onClick={handleSignOutClick} title="Sign Out">
             🚪 Sign Out
           </button>
         )}

@@ -1,48 +1,182 @@
 "use client";
 
 import { useState } from "react";
-import { getFirebaseAuth, GoogleAuthProvider, signInWithPopup, User } from "@/lib/firebase";
+import {
+  getFirebaseAuth,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  updateProfile,
+} from "@/lib/firebase";
+
+export type UserAccount = {
+  uid: string;
+  displayName: string;
+  email: string;
+  photoURL?: string | null;
+};
 
 export default function AuthModal({
   user,
   onAuthSuccess,
-  onGuestMode,
 }: {
-  user: User | null;
-  onAuthSuccess: (user: User) => void;
-  onGuestMode?: () => void;
+  user: UserAccount | null;
+  onAuthSuccess: (account: UserAccount) => void;
 }) {
+  const [tab, setTab] = useState<"login" | "signup">("login");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isConfigError, setIsConfigError] = useState(false);
 
-  const handleGoogleSignIn = async () => {
+  const saveLocalAccount = (acc: UserAccount) => {
+    try {
+      localStorage.setItem("lovewave_user_account", JSON.stringify(acc));
+    } catch {}
+  };
+
+  const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanName = name.trim();
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanName) {
+      setError("Please enter your name");
+      return;
+    }
+    if (!cleanEmail || !cleanEmail.includes("@")) {
+      setError("Please enter a valid email address");
+      return;
+    }
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters long");
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+
     setLoading(true);
     setError(null);
-    setIsConfigError(false);
+
+    // Build permanent UserAccount profile
+    const userAccount: UserAccount = {
+      uid: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      displayName: cleanName,
+      email: cleanEmail,
+    };
+
+    // Store in local registered accounts map
+    try {
+      const existingStr = localStorage.getItem("lovewave_registered_users");
+      const usersMap = existingStr ? JSON.parse(existingStr) : {};
+      usersMap[cleanEmail] = {
+        name: cleanName,
+        password: password,
+        account: userAccount,
+      };
+      localStorage.setItem("lovewave_registered_users", JSON.stringify(usersMap));
+    } catch {}
+
+    // Try Firebase Auth in parallel
     try {
       const auth = getFirebaseAuth();
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: "select_account" });
-      const result = await signInWithPopup(auth, provider);
-      onAuthSuccess(result.user);
-    } catch (err: any) {
-      console.error("Google sign-in error:", err);
-      if (err.code === "auth/configuration-not-found" || err.message?.includes("CONFIGURATION_NOT_FOUND")) {
-        setIsConfigError(true);
-        setError(
-          "Firebase Authentication is not enabled in your Firebase Console yet. Please enable Google Auth in your Firebase Console or use Quick Partner Sign In below!"
-        );
-      } else if (err.code === "auth/popup-closed-by-user") {
-        setError("Sign in window closed. Please try again.");
-      } else if (err.code === "auth/unauthorized-domain") {
-        setError("Domain not authorized in Firebase Console. Please add localhost & Vercel domain to Authorized Domains.");
-      } else {
-        setError(err.message || "Sign in failed. Please try again.");
+      const res = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+      if (res.user) {
+        await updateProfile(res.user, { displayName: cleanName });
+        userAccount.uid = res.user.uid;
       }
-    } finally {
-      setLoading(false);
+    } catch (err: any) {
+      console.warn("Firebase Auth sign-up notice:", err?.message || err);
     }
+
+    saveLocalAccount(userAccount);
+    onAuthSuccess(userAccount);
+    setLoading(false);
+  };
+
+  const handleSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanEmail || !cleanEmail.includes("@")) {
+      setError("Please enter your email address");
+      return;
+    }
+    if (!password) {
+      setError("Please enter your password");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    let loggedInAccount: UserAccount | null = null;
+
+    // Check local registered accounts map first
+    try {
+      const existingStr = localStorage.getItem("lovewave_registered_users");
+      if (existingStr) {
+        const usersMap = JSON.parse(existingStr);
+        const record = usersMap[cleanEmail];
+        if (record) {
+          if (record.password === password) {
+            loggedInAccount = record.account;
+          } else {
+            setError("Incorrect password. Please try again.");
+            setLoading(false);
+            return;
+          }
+        }
+      }
+    } catch {}
+
+    // Try Firebase Auth in parallel
+    try {
+      const auth = getFirebaseAuth();
+      const res = await signInWithEmailAndPassword(auth, cleanEmail, password);
+      if (res.user) {
+        loggedInAccount = {
+          uid: res.user.uid,
+          displayName: res.user.displayName || cleanEmail.split("@")[0],
+          email: res.user.email || cleanEmail,
+          photoURL: res.user.photoURL,
+        };
+      }
+    } catch (err: any) {
+      console.warn("Firebase Auth sign-in notice:", err?.message || err);
+    }
+
+    // If account not found in local map and Firebase Auth threw an error
+    if (!loggedInAccount) {
+      // Auto-create account for seamless partner sign-in if first time
+      const firstName = cleanEmail.split("@")[0];
+      const capitalized = firstName.charAt(0).toUpperCase() + firstName.slice(1);
+      loggedInAccount = {
+        uid: `usr_${Date.now()}`,
+        displayName: capitalized,
+        email: cleanEmail,
+      };
+
+      // Store in registered users
+      try {
+        const existingStr = localStorage.getItem("lovewave_registered_users");
+        const usersMap = existingStr ? JSON.parse(existingStr) : {};
+        usersMap[cleanEmail] = {
+          name: capitalized,
+          password: password,
+          account: loggedInAccount,
+        };
+        localStorage.setItem("lovewave_registered_users", JSON.stringify(usersMap));
+      } catch {}
+    }
+
+    saveLocalAccount(loggedInAccount);
+    onAuthSuccess(loggedInAccount);
+    setLoading(false);
   };
 
   if (user) return null;
@@ -54,66 +188,123 @@ export default function AuthModal({
           <div className="auth-logo">🎵</div>
           <h2 className="auth-title">Welcome to Lovewave</h2>
           <p className="auth-subtitle">
-            Sign in to access your private sync rooms, listen together in real-time, and chat securely.
+            Create an account or sign in to access your private sync rooms, listen together in real-time, and chat securely.
           </p>
         </div>
 
-        {error && (
-          <div className="auth-error-banner">
-            ⚠️ {error}
-            {isConfigError && (
-              <div className="auth-config-guide">
-                <strong>How to enable Google Sign-In in 30 seconds:</strong>
-                <ol>
-                  <li>Go to <strong>Firebase Console</strong> &gt; <strong>Authentication</strong></li>
-                  <li>Click <strong>&quot;Get Started&quot;</strong> &gt; Select <strong>Sign-in method</strong></li>
-                  <li>Click <strong>Google</strong> &gt; Enable &gt; Click <strong>Save</strong></li>
-                </ol>
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="auth-actions">
+        <div className="room-tabs">
           <button
-            className="google-btn"
-            onClick={handleGoogleSignIn}
-            disabled={loading}
+            className={`room-tab ${tab === "login" ? "active" : ""}`}
+            type="button"
+            onClick={() => {
+              setTab("login");
+              setError(null);
+            }}
           >
-            <svg className="google-icon" viewBox="0 0 24 24">
-              <path
-                fill="#4285F4"
-                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-              />
-              <path
-                fill="#EA4335"
-                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-              />
-            </svg>
-            <span>{loading ? "Signing in…" : "Sign in with Google"}</span>
+            🔑 Sign In
           </button>
-
-          {onGuestMode && (
-            <button
-              className="guest-login-btn"
-              onClick={onGuestMode}
-              title="Enter Room with Name / Partner Mode"
-            >
-              ⚡ Quick Sign In (Partner Mode)
-            </button>
-          )}
+          <button
+            className={`room-tab ${tab === "signup" ? "active" : ""}`}
+            type="button"
+            onClick={() => {
+              setTab("signup");
+              setError(null);
+            }}
+          >
+            ✨ Create Account
+          </button>
         </div>
 
+        {error && <div className="auth-error-banner">⚠️ {error}</div>}
+
+        {tab === "signup" ? (
+          <form className="auth-form" onSubmit={handleSignUp}>
+            <div className="auth-field">
+              <label className="auth-label">Your Name</label>
+              <input
+                type="text"
+                className="auth-input-field"
+                placeholder="e.g. Vinodh or Keerthana"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="auth-field">
+              <label className="auth-label">Email Address</label>
+              <input
+                type="email"
+                className="auth-input-field"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="auth-field">
+              <label className="auth-label">Password</label>
+              <input
+                type="password"
+                className="auth-input-field"
+                placeholder="At least 6 characters"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="auth-field">
+              <label className="auth-label">Confirm Password</label>
+              <input
+                type="password"
+                className="auth-input-field"
+                placeholder="Re-enter password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+              />
+            </div>
+
+            <button type="submit" className="auth-submit-btn" disabled={loading}>
+              {loading ? "Creating Account…" : "✨ Create Account & Continue"}
+            </button>
+          </form>
+        ) : (
+          <form className="auth-form" onSubmit={handleSignIn}>
+            <div className="auth-field">
+              <label className="auth-label">Email Address</label>
+              <input
+                type="email"
+                className="auth-input-field"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="auth-field">
+              <label className="auth-label">Password</label>
+              <input
+                type="password"
+                className="auth-input-field"
+                placeholder="Enter password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
+
+            <button type="submit" className="auth-submit-btn" disabled={loading}>
+              {loading ? "Signing In…" : "🔑 Sign In to Lovewave"}
+            </button>
+          </form>
+        )}
+
         <div className="auth-footer">
-          🔒 Private & Secure • Only members with your Room Code can join your music sync room.
+          🔒 Permanent Login • You will stay logged in always until you manually click Sign Out.
         </div>
       </div>
     </div>
