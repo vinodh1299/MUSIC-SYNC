@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
-import { otpStore } from "@/lib/otpStore";
+
+const FIREBASE_DB_URL =
+  process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL ||
+  "https://music-sync-822b1-default-rtdb.firebaseio.com";
 
 export async function POST(req: Request) {
   try {
@@ -14,13 +17,22 @@ export async function POST(req: Request) {
     }
 
     const cleanEmail = email.trim().toLowerCase();
+    const cleanEmailKey = cleanEmail.replace(/[^a-z0-9]/g, "_");
 
     // Generate 6-digit numeric OTP
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes valid
 
-    // Save to memory store
-    otpStore.set(cleanEmail, { code, expiresAt, type: type || "verification" });
+    // Save to Firebase Realtime Database for persistent serverless availability across Vercel Lambdas
+    try {
+      await fetch(`${FIREBASE_DB_URL}/otps/${cleanEmailKey}.json`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, expiresAt, type: type || "verification" }),
+      });
+    } catch (dbErr: any) {
+      console.warn("Firebase OTP store notice:", dbErr?.message || dbErr);
+    }
 
     const subject =
       type === "signup"
@@ -46,14 +58,19 @@ export async function POST(req: Request) {
     `;
 
     let sentEmail = false;
-    const resendApiKey = process.env.RESEND_API_KEY || (process.env.SMTP_PASS?.startsWith("re_") ? process.env.SMTP_PASS : null);
+    const resendApiKey =
+      process.env.RESEND_API_KEY ||
+      (process.env.SMTP_PASS?.startsWith("re_") ? process.env.SMTP_PASS : null);
 
-    // 1. Try Resend HTTP API directly first (Fastest & Most Reliable)
+    // 1. Try Resend HTTP API directly first
     if (resendApiKey) {
       try {
         const resendRes = await fetch("https://api.resend.com/emails", {
           method: "POST",
-          headers: { "Authorization": `Bearer ${resendApiKey}`, "Content-Type": "application/json" },
+          headers: {
+            Authorization: `Bearer ${resendApiKey}`,
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify({
             from: process.env.SMTP_FROM || "Lovewave <onboarding@resend.dev>",
             to: [cleanEmail],
@@ -64,7 +81,6 @@ export async function POST(req: Request) {
         });
 
         const resendData = await resendRes.json();
-
         if (resendRes.ok) {
           sentEmail = true;
           console.log(`[RESEND SUCCESS] Sent OTP to ${cleanEmail}:`, resendData.id);
@@ -76,7 +92,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 2. Fallback to Nodemailer SMTP if Resend API was not triggered or didn't succeed
+    // 2. Fallback to Nodemailer SMTP
     if (!sentEmail && process.env.SMTP_HOST && process.env.SMTP_USER) {
       try {
         const transporter = nodemailer.createTransport({
@@ -109,7 +125,6 @@ export async function POST(req: Request) {
       message: sentEmail
         ? `Security OTP sent to ${cleanEmail}. Please check your email inbox.`
         : `Security OTP generated for ${cleanEmail}.`,
-      // Only include devOtp if email delivery was not configured/sent
       devOtp: sentEmail ? undefined : code,
     });
   } catch (error: any) {

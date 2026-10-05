@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { otpStore } from "@/lib/otpStore";
+
+const FIREBASE_DB_URL =
+  process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL ||
+  "https://music-sync-822b1-default-rtdb.firebaseio.com";
 
 export async function POST(req: Request) {
   try {
@@ -13,11 +16,21 @@ export async function POST(req: Request) {
     }
 
     const cleanEmail = email.trim().toLowerCase();
+    const cleanEmailKey = cleanEmail.replace(/[^a-z0-9]/g, "_");
     const cleanOtp = otp.trim();
 
-    const record = otpStore.get(cleanEmail);
+    // Fetch stored OTP record from Firebase Realtime Database
+    let record: { code: string; expiresAt: number; type: string } | null = null;
+    try {
+      const resDb = await fetch(`${FIREBASE_DB_URL}/otps/${cleanEmailKey}.json`, {
+        cache: "no-store",
+      });
+      record = await resDb.json();
+    } catch (dbErr: any) {
+      console.warn("Firebase OTP lookup notice:", dbErr?.message || dbErr);
+    }
 
-    if (!record) {
+    if (!record || !record.code) {
       return NextResponse.json(
         { success: false, message: "No OTP request found for this email. Please request a new code." },
         { status: 400 }
@@ -25,7 +38,9 @@ export async function POST(req: Request) {
     }
 
     if (Date.now() > record.expiresAt) {
-      otpStore.delete(cleanEmail);
+      try {
+        await fetch(`${FIREBASE_DB_URL}/otps/${cleanEmailKey}.json`, { method: "DELETE" });
+      } catch {}
       return NextResponse.json(
         { success: false, message: "OTP code has expired. Please request a new code." },
         { status: 400 }
@@ -39,8 +54,10 @@ export async function POST(req: Request) {
       );
     }
 
-    // OTP verified successfully - clear token
-    otpStore.delete(cleanEmail);
+    // OTP verified successfully - delete token from Firebase
+    try {
+      await fetch(`${FIREBASE_DB_URL}/otps/${cleanEmailKey}.json`, { method: "DELETE" });
+    } catch {}
 
     return NextResponse.json({
       success: true,
