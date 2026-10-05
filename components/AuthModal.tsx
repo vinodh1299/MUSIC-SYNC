@@ -150,6 +150,24 @@ export default function AuthModal({
         localStorage.setItem("lovewave_registered_users", JSON.stringify(usersMap));
       } catch {}
 
+      // Store in Firebase Realtime Database users directory
+      try {
+        const dbUrl =
+          process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL ||
+          "https://music-sync-822b1-default-rtdb.firebaseio.com";
+        const cleanKey = pendingUserAccount.email.toLowerCase().replace(/[^a-z0-9]/g, "_");
+        await fetch(`${dbUrl}/users/${cleanKey}.json`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            uid: pendingUserAccount.uid,
+            displayName: pendingUserAccount.displayName,
+            email: pendingUserAccount.email,
+            createdAt: Date.now(),
+          }),
+        });
+      } catch {}
+
       // Try Firebase Auth in parallel
       try {
         const auth = getFirebaseAuth();
