@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Lovewave</string>
+    <string name="title_activity_main">Lovewave</string>
+    <string name="package_name">com.lovewave.musicsync</string>
+    <string name="custom_url_scheme">com.lovewave.musicsync</string>
+</resources>

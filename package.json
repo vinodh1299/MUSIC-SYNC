@@ -6,9 +6,14 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "cap:sync": "npx cap sync android",
+    "apk:build": "cd android && ./gradlew assembleRelease",
+    "aab:build": "cd android && ./gradlew bundleRelease"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
     "firebase": "^10.13.2",
     "next": "14.2.35",
     "nodemailer": "^10.0.14",
@@ -16,6 +21,7 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.2",
     "@types/node": "^20.14.0",
     "@types/nodemailer": "^8.0.2",
     "@types/react": "^18.3.5",
