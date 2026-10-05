@@ -2,16 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { searchYouTube, YouTubeSearchResult } from "@/lib/youtube";
-import { addToQueue, insertPlayNextInQueue, removeFromQueue, clearQueue, pushState, QueueItem } from "@/lib/room";
+import { addToQueue, insertPlayNextInQueue, removeFromQueue, clearQueue, pushState, QueueItem, DEFAULT_ROOM_ID } from "@/lib/room";
 
 export default function SearchPanel({
   selfName,
   queue,
   currentVideoId,
+  roomId = DEFAULT_ROOM_ID,
 }: {
   selfName: string;
   queue: QueueItem[];
   currentVideoId: string | null | undefined;
+  roomId?: string;
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<YouTubeSearchResult[]>([]);
@@ -49,11 +51,9 @@ export default function SearchPanel({
   };
 
   const playNow = async (item: { videoId: string; title: string; thumbnail: string }) => {
-    // Automatically clear search input and suggestions once song starts playing
     clearSearchInput();
-
-    // Directly play the song WITHOUT adding it to queue automatically (queue is only modified when explicitly added)
     pushState(
+      roomId,
       {
         videoId: item.videoId,
         title: item.title,
@@ -67,25 +67,25 @@ export default function SearchPanel({
 
   const addQueue = (item: { videoId: string; title: string; thumbnail: string }) => {
     clearSearchInput();
-    addToQueue({ ...item, addedBy: selfName }, queue);
+    addToQueue(roomId, { ...item, addedBy: selfName }, queue);
     setNotice(`Added "${item.title.substring(0, 30)}..." to queue`);
     setTimeout(() => setNotice(null), 3000);
   };
 
   const playNext = async (item: { videoId: string; title: string; thumbnail: string }) => {
     clearSearchInput();
-    await insertPlayNextInQueue({ ...item, addedBy: selfName }, queue);
+    await insertPlayNextInQueue(roomId, { ...item, addedBy: selfName }, queue);
     setNotice(`Set "${item.title.substring(0, 30)}..." to play next! ⚡`);
     setTimeout(() => setNotice(null), 3000);
   };
 
   const removeItem = (id: string) => {
-    removeFromQueue(id);
+    removeFromQueue(roomId, id);
   };
 
   const handleClearQueue = () => {
     if (confirm("Clear all queued songs?")) {
-      clearQueue();
+      clearQueue(roomId);
     }
   };
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { loadYouTubeIframeApi, fetchRecommendations, fetchAudioStream } from "@/lib/youtube";
-import { PlaybackState, pushState, QueueItem, removeFromQueue, addToQueue, insertPlayNextInQueue, Presence } from "@/lib/room";
+import { PlaybackState, pushState, QueueItem, removeFromQueue, addToQueue, Presence, DEFAULT_ROOM_ID } from "@/lib/room";
 
 const DRIFT_TOLERANCE_SEC = 1.0;
 const HEARTBEAT_MS = 4000;
@@ -15,6 +15,7 @@ export default function Player({
   queue,
   onListeningChange,
   duckTrigger,
+  roomId = DEFAULT_ROOM_ID,
 }: {
   selfName: string;
   partnerName?: string;
@@ -23,6 +24,7 @@ export default function Player({
   queue: QueueItem[];
   onListeningChange: (listening: boolean) => void;
   duckTrigger?: number;
+  roomId?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
@@ -114,7 +116,7 @@ export default function Player({
     latestStateRef.current = state;
   }, [state]);
 
-  // Audio Ducking on Chat Notification (Decreases song volume to 20% of current setting, then restores to user setting)
+  // Audio Ducking on Chat Notification
   useEffect(() => {
     if (!duckTrigger || duckTrigger === 0) return;
     try {
@@ -150,7 +152,7 @@ export default function Player({
     }
   }, [state?.videoId]);
 
-  // Fetch direct playable HTML5 audio stream URL for mobile background playback
+  // Fetch direct playable HTML5 audio stream URL
   useEffect(() => {
     if (!state?.videoId) {
       setAudioStreamUrl(null);
@@ -167,7 +169,6 @@ export default function Player({
     };
   }, [state?.videoId]);
 
-  // Web Audio MediaStreamDestination Bridge for iOS Screen Lock Playback
   const initBackgroundAudioContext = () => {
     if (typeof window === "undefined") return;
     try {
@@ -178,13 +179,12 @@ export default function Player({
           const osc = ctx.createOscillator();
           const dest = ctx.createMediaStreamDestination();
           const gain = ctx.createGain();
-          gain.gain.value = 0.0001; // Soft background stream anchor for iOS WebKit
+          gain.gain.value = 0.0001;
           osc.connect(gain);
           gain.connect(dest);
           osc.start();
           audioCtxRef.current = ctx;
 
-          // Attach MediaStream to HTML5 Audio Element for iOS WebKit Lock Screen Session
           const audio = new Audio();
           audio.srcObject = dest.stream;
           audio.loop = true;
@@ -202,7 +202,6 @@ export default function Player({
     }
   };
 
-  // Sync background HTML5 audio element playing state
   useEffect(() => {
     if (audioRef.current) {
       if (isPlayingLocal) {
@@ -213,7 +212,6 @@ export default function Player({
     }
   }, [isPlayingLocal]);
 
-  // Calculate live expected position taking into account network latency
   const getExpectedPosition = (): number => {
     if (!state) return 0;
     const elapsed =
@@ -223,7 +221,6 @@ export default function Player({
     return state.positionSec + elapsed;
   };
 
-  // Auto-resync to exact live position when returning from iOS screen lock or background tab
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible" && state) {
@@ -253,7 +250,6 @@ export default function Player({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
-  // Helper to join live playback with gesture activation
   const joinLiveSync = () => {
     initBackgroundAudioContext();
     if (!state) return;
@@ -271,7 +267,6 @@ export default function Player({
     setNeedsGestureToSync(false);
   };
 
-  // Mobile Lockscreen MediaSession Integration (iOS Lock Screen / Android Notification Controls)
   useEffect(() => {
     if (typeof window === "undefined" || !("mediaSession" in navigator)) return;
 
@@ -307,12 +302,12 @@ export default function Player({
         initBackgroundAudioContext();
         if (playerRef.current) playerRef.current.playVideo?.();
         if (htmlAudioRef.current) htmlAudioRef.current.play().catch(() => {});
-        pushState({ isPlaying: true, positionSec: playerRef.current?.getCurrentTime?.() ?? htmlAudioRef.current?.currentTime ?? 0 }, selfName);
+        pushState(roomId, { isPlaying: true, positionSec: playerRef.current?.getCurrentTime?.() ?? htmlAudioRef.current?.currentTime ?? 0 }, selfName);
       });
       navigator.mediaSession.setActionHandler("pause", () => {
         if (playerRef.current) playerRef.current.pauseVideo?.();
         if (htmlAudioRef.current) htmlAudioRef.current.pause();
-        pushState({ isPlaying: false, positionSec: playerRef.current?.getCurrentTime?.() ?? htmlAudioRef.current?.currentTime ?? 0 }, selfName);
+        pushState(roomId, { isPlaying: false, positionSec: playerRef.current?.getCurrentTime?.() ?? htmlAudioRef.current?.currentTime ?? 0 }, selfName);
       });
       navigator.mediaSession.setActionHandler("nexttrack", () => {
         handleSongEnded();
@@ -333,9 +328,8 @@ export default function Player({
       } catch {}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state?.title, state?.thumbnail, state?.updatedBy, duration, displayPosition, isPlayingLocal]);
+  }, [state?.title, state?.thumbnail, state?.updatedBy, duration, displayPosition, isPlayingLocal, roomId]);
 
-  // Initialize YouTube Player
   useEffect(() => {
     let cancelled = false;
     loadYouTubeIframeApi().then(() => {
@@ -379,22 +373,22 @@ export default function Player({
               }
             }
 
-            // Sync user clicks directly on the YouTube video player iframe to Firebase
             if (!isReconcilingRef.current && readyRef.current) {
               if (paused && latestStateRef.current?.isPlaying) {
                 pushState(
+                  roomId,
                   { isPlaying: false, positionSec: playerRef.current?.getCurrentTime?.() ?? 0 },
                   selfName
                 );
               } else if (playing && latestStateRef.current && !latestStateRef.current.isPlaying) {
                 pushState(
+                  roomId,
                   { isPlaying: true, positionSec: playerRef.current?.getCurrentTime?.() ?? 0 },
                   selfName
                 );
               }
             }
 
-            // Handle Song Ended -> Autoplay Next Preference or Queue
             if (e.data === YT.PlayerState.ENDED) {
               handleSongEnded();
             }
@@ -418,26 +412,25 @@ export default function Player({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Handle Queue-First Autoplay / Next Song
   const handleSongEnded = async () => {
     if (isHandlingEndRef.current) return;
     isHandlingEndRef.current = true;
 
     try {
-      // 1. Filter queue for next unplayed item
       const candidateQueue = queue ? queue.filter((q) => q.videoId !== state?.videoId) : [];
       if (queue && queue.length > 0) {
         const currentInQueue = queue.find((q) => q.videoId === state?.videoId);
         if (currentInQueue) {
-          await removeFromQueue(currentInQueue.id);
+          await removeFromQueue(roomId, currentInQueue.id);
         }
       }
 
       if (candidateQueue.length > 0) {
         const nextItem = candidateQueue[0];
         setAutoplayNotice(`Playing next from queue: ${nextItem.title}`);
-        await removeFromQueue(nextItem.id);
+        await removeFromQueue(roomId, nextItem.id);
         await pushState(
+          roomId,
           {
             videoId: nextItem.videoId,
             title: nextItem.title,
@@ -451,7 +444,6 @@ export default function Player({
         return;
       }
 
-      // 2. If queue is empty and Autoplay is enabled: find preference recommendation
       if (autoplay && state?.title) {
         setAutoplayNotice("Finding next song based on your preferences...");
         const recommendations = await fetchRecommendations(
@@ -462,6 +454,7 @@ export default function Player({
           const nextSong = recommendations[0];
           setAutoplayNotice(`Autoplay next: ${nextSong.title}`);
           await pushState(
+            roomId,
             {
               videoId: nextSong.videoId,
               title: nextSong.title,
@@ -486,12 +479,10 @@ export default function Player({
     }
   };
 
-  // Track listening presence status
   useEffect(() => {
     onListeningChange(isPlayingLocal);
   }, [isPlayingLocal, onListeningChange]);
 
-  // Tick displayed position & trigger fallback end detection if video reaches end
   useEffect(() => {
     const id = setInterval(() => {
       if (!seekingRef.current) {
@@ -507,7 +498,6 @@ export default function Player({
         setDisplayPosition(curr);
         setDuration(dur);
 
-        // Fallback end-of-track trigger in case ENDED event is suppressed
         if (dur > 0 && curr >= dur - 0.8 && isPlayingLocal && !isHandlingEndRef.current) {
           handleSongEnded();
         }
@@ -516,24 +506,21 @@ export default function Player({
     return () => clearInterval(id);
   }, [isPlayingLocal, mode, audioStreamUrl]);
 
-  // Periodic position heartbeat when playing
   useEffect(() => {
     const id = setInterval(() => {
       if (!state || state.updatedBy !== selfName || !state.isPlaying) return;
       const curr = playerRef.current?.getCurrentTime?.() ?? htmlAudioRef.current?.currentTime ?? 0;
-      pushState({ positionSec: curr }, selfName);
+      pushState(roomId, { positionSec: curr }, selfName);
     }, HEARTBEAT_MS);
     return () => clearInterval(id);
-  }, [state, selfName]);
+  }, [state, selfName, roomId]);
 
-  // Clean 2-Way Synchronization: Reconcile Firebase state into local YouTube player instance & HTML5 Audio
   useEffect(() => {
     if (!ready || !state) return;
 
     const expected = getExpectedPosition();
     isReconcilingRef.current = true;
 
-    // 1. YouTube IFrame Player Reconciliation
     if (playerRef.current) {
       const player = playerRef.current;
       if (state.videoId && state.videoId !== loadedVideoIdRef.current) {
@@ -564,7 +551,6 @@ export default function Player({
       }
     }
 
-    // 2. HTML5 Audio Element Reconciliation (for Mobile Background Audio across apps/locks)
     if (htmlAudioRef.current && audioStreamUrl) {
       const audio = htmlAudioRef.current;
       if (state.isPlaying) {
@@ -600,7 +586,7 @@ export default function Player({
     }
 
     const currentPos = playerRef.current?.getCurrentTime?.() ?? htmlAudioRef.current?.currentTime ?? 0;
-    pushState({ isPlaying: nextPlaying, positionSec: currentPos }, selfName);
+    pushState(roomId, { isPlaying: nextPlaying, positionSec: currentPos }, selfName);
   };
 
   const seekTo = (seconds: number) => {
@@ -608,12 +594,13 @@ export default function Player({
     if (playerRef.current) playerRef.current.seekTo(seconds, true);
     if (htmlAudioRef.current) htmlAudioRef.current.currentTime = seconds;
     setDisplayPosition(seconds);
-    pushState({ isPlaying: true, positionSec: seconds }, selfName);
+    pushState(roomId, { isPlaying: true, positionSec: seconds }, selfName);
   };
 
   const handleLikeQueueSong = () => {
     if (state?.videoId && state?.title) {
       addToQueue(
+        roomId,
         {
           videoId: state.videoId,
           title: state.title,
@@ -638,7 +625,6 @@ export default function Player({
 
   return (
     <div className={`player-wrapper ${mode === "video" ? "mode-video" : "mode-compact"}`}>
-      {/* Hidden Native HTML5 Audio Element for Unrestricted Background Mobile Audio */}
       {audioStreamUrl && (
         <audio
           ref={htmlAudioRef}
@@ -651,7 +637,6 @@ export default function Player({
         />
       )}
 
-      {/* Top Bar Controls for Player UI */}
       <div className="player-toolbar">
         <div className="player-mode-toggle">
           <button
@@ -687,7 +672,6 @@ export default function Player({
         </div>
       </div>
 
-      {/* Offline / Disconnected Partner Banner */}
       {partnerIsOffline && (
         <div className="offline-banner">
           ⚠️ {partnerName || "Partner"} is Offline (Disconnected)
@@ -696,7 +680,6 @@ export default function Player({
 
       {autoplayNotice && <div className="autoplay-banner">{autoplayNotice}</div>}
 
-      {/* Main YouTube Video Interface Screen */}
       <div
         className={`youtube-video-container ${isVideoHidden ? "video-hidden" : ""}`}
         onClick={initBackgroundAudioContext}
@@ -710,7 +693,6 @@ export default function Player({
           </div>
         )}
 
-        {/* Late Joiner / Autoplay Policy Sync Overlay */}
         {needsGestureToSync && state?.isPlaying && (
           <div className="sync-overlay" onClick={joinLiveSync}>
             <div className="sync-card">
@@ -725,7 +707,6 @@ export default function Player({
         )}
       </div>
 
-      {/* Synchronized Control Bar */}
       <div className="player-body">
         <div className="player-meta-row">
           <div className="player-art-mini">
@@ -797,7 +778,6 @@ export default function Player({
           />
           <span className="player-time">{fmt(duration)}</span>
 
-          {/* Volume Sound Control Slider */}
           <div className="player-volume-control">
             <button
               className="player-volume-btn"

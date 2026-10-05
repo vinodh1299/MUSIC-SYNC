@@ -12,6 +12,14 @@ import {
   serverTimestamp,
   remove,
 } from "firebase/database";
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut,
+  onAuthStateChanged,
+  User,
+} from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -32,7 +40,25 @@ export function getDb() {
   return getDatabase(getFirebaseApp());
 }
 
-export { ref, onValue, set, update, push, remove, onDisconnect, serverTimestamp };
+export function getFirebaseAuth() {
+  return getAuth(getFirebaseApp());
+}
 
-// Fixed single room — this app is built for exactly two people.
-export const ROOM_ID = "main";
+export {
+  ref,
+  onValue,
+  set,
+  update,
+  push,
+  remove,
+  onDisconnect,
+  serverTimestamp,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut,
+  onAuthStateChanged,
+};
+export type { User };
+
+// Default fallback room ID for guest mode / backward compatibility
+export const DEFAULT_ROOM_ID = "main";

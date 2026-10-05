@@ -12,6 +12,7 @@ import {
   sendChatMessage,
   setTypingStatus,
   markMessagesSeen,
+  DEFAULT_ROOM_ID,
 } from "@/lib/room";
 
 const NAMES: [string, string] = [
@@ -134,6 +135,7 @@ function ChatMessageItem({
 
 export default function ChatPopoutPage() {
   const [selfName, setSelfName] = useState<string | null>(null);
+  const [roomId, setRoomId] = useState<string>(DEFAULT_ROOM_ID);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [partnerPresence, setPartnerPresence] = useState<Presence | null>(null);
   const [isPartnerTyping, setIsPartnerTyping] = useState(false);
@@ -154,18 +156,23 @@ export default function ChatPopoutPage() {
       if (stored && NAMES.includes(stored)) {
         setSelfName(stored);
       }
+      const params = new URLSearchParams(window.location.search);
+      const roomParam = params.get("room") || localStorage.getItem("lovewave_active_room");
+      if (roomParam) {
+        setRoomId(roomParam.trim().toUpperCase());
+      }
     }
   }, []);
 
   useEffect(() => {
     if (!selfName) return;
-    const unsubChat = subscribeChat((newMsgs) => {
+    const unsubChat = subscribeChat(roomId, (newMsgs) => {
       setMessages(newMsgs);
-      markMessagesSeen(selfName, newMsgs);
+      markMessagesSeen(roomId, selfName, newMsgs);
     });
-    const unsubPresence = subscribePresence(partnerName, setPartnerPresence);
-    const unsubTyping = subscribeTyping(partnerName, setIsPartnerTyping);
-    const presence = registerPresence(selfName);
+    const unsubPresence = subscribePresence(roomId, partnerName, setPartnerPresence);
+    const unsubTyping = subscribeTyping(roomId, partnerName, setIsPartnerTyping);
+    const presence = registerPresence(roomId, selfName);
 
     return () => {
       unsubChat();
@@ -173,7 +180,7 @@ export default function ChatPopoutPage() {
       unsubTyping();
       presence.goOffline();
     };
-  }, [selfName, partnerName]);
+  }, [selfName, partnerName, roomId]);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
@@ -202,13 +209,13 @@ export default function ChatPopoutPage() {
     if (!selfName) return;
 
     if (val.trim().length > 0) {
-      setTypingStatus(selfName, true);
+      setTypingStatus(roomId, selfName, true);
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = setTimeout(() => {
-        setTypingStatus(selfName, false);
+        setTypingStatus(roomId, selfName, false);
       }, 2500);
     } else {
-      setTypingStatus(selfName, false);
+      setTypingStatus(roomId, selfName, false);
     }
   };
 
@@ -216,14 +223,15 @@ export default function ChatPopoutPage() {
     e.preventDefault();
     if (!text.trim() || !selfName) return;
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    setTypingStatus(selfName, false);
-    
+    setTypingStatus(roomId, selfName, false);
+
     sendChatMessage(
+      roomId,
       selfName,
       text.trim(),
       replyingTo ? { id: replyingTo.id, sender: replyingTo.sender, text: replyingTo.text } : null
     );
-    
+
     setText("");
     setReplyingTo(null);
   };
@@ -251,9 +259,9 @@ export default function ChatPopoutPage() {
       <div className="chat-popout-window">
         <div className="chat-header">
           <div className="chat-header-title">
-            <span className="popout-title-text">💬 Notes to {partnerName}</span>
+            <span className="popout-title-text">💬 Notes to {partnerName} (Room: {roomId})</span>
             <span className={`chat-partner-status ${partnerOnline ? "status-online" : "status-offline"}`}>
-              {partnerOnline ? "🟢 Online" : "🔴 Offline (Disconnected)"}
+              {partnerOnline ? "🟢 Online" : "🔴 Offline"}
             </span>
           </div>
         </div>
@@ -272,7 +280,6 @@ export default function ChatPopoutPage() {
             />
           ))}
 
-          {/* Real-Time Typing Indicator */}
           {isPartnerTyping && (
             <div className="chat-typing-indicator">
               <span className="typing-dot" />
@@ -283,7 +290,6 @@ export default function ChatPopoutPage() {
           )}
         </div>
 
-        {/* Replying Banner above Chat Input Row */}
         {replyingTo && (
           <div className="replying-banner">
             <div className="replying-meta">

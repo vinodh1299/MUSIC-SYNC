@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChatMessage, sendChatMessage, setTypingStatus, markMessagesSeen, Presence } from "@/lib/room";
+import { ChatMessage, sendChatMessage, setTypingStatus, markMessagesSeen, Presence, DEFAULT_ROOM_ID } from "@/lib/room";
 
 function fmtTime(ts: number | object | undefined | null) {
   if (!ts || typeof ts !== "number") return "";
@@ -41,7 +41,6 @@ function ChatMessageItem({
   const handleMove = (clientX: number) => {
     if (!isDraggingRef.current) return;
     const deltaX = clientX - startXRef.current;
-    // Only allow dragging left-to-right (positive deltaX) like WhatsApp
     if (deltaX > 0) {
       const resistanceX = Math.min(80, deltaX * 0.6);
       setDragX(resistanceX);
@@ -54,7 +53,6 @@ function ChatMessageItem({
     setIsSwiping(false);
 
     if (dragX >= 45) {
-      // Trigger WhatsApp Swipe to Reply!
       onReply(message);
       if (typeof window !== "undefined" && window.navigator && window.navigator.vibrate) {
         try { window.navigator.vibrate(35); } catch {}
@@ -65,33 +63,33 @@ function ChatMessageItem({
 
   return (
     <div
-      id={`msg-${message.id}`}
       className={`chat-swipe-wrapper ${isSelf ? "chat-swipe-self" : "chat-swipe-partner"}`}
+      onTouchStart={(e) => handleStart(e.touches[0].clientX)}
+      onTouchMove={(e) => handleMove(e.touches[0].clientX)}
+      onTouchEnd={handleEnd}
       onMouseDown={(e) => handleStart(e.clientX)}
       onMouseMove={(e) => handleMove(e.clientX)}
       onMouseUp={handleEnd}
       onMouseLeave={handleEnd}
-      onTouchStart={(e) => e.touches[0] && handleStart(e.touches[0].clientX)}
-      onTouchMove={(e) => e.touches[0] && handleMove(e.touches[0].clientX)}
-      onTouchEnd={handleEnd}
     >
-      {/* Background Swipe Icon Indicator */}
       <div
         className={`swipe-reply-indicator ${dragX >= 45 ? "threshold-active" : ""}`}
-        style={{ opacity: Math.min(1, dragX / 40) }}
+        style={{
+          opacity: Math.min(1, dragX / 30),
+          transform: `translateY(-50%) scale(${Math.min(1, dragX / 45)})`,
+        }}
       >
         <span className="swipe-icon">↩️</span>
       </div>
 
-      {/* Message Bubble Container with Smooth Spring Transform */}
       <div
-        className={`chat-msg ${isSelf ? "chat-msg-self" : "chat-msg-partner"} ${dragX > 0 ? "swiping" : ""}`}
+        id={`msg-${message.id}`}
+        className={`chat-msg ${isSelf ? "chat-msg-self" : "chat-msg-partner"} ${isSwiping ? "swiping" : ""}`}
         style={{
           transform: `translateX(${dragX}px)`,
-          transition: isSwiping ? "none" : "transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.25)",
+          transition: isSwiping ? "none" : "transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
         }}
       >
-        {/* WhatsApp-Style Quoted Message Preview inside Bubble */}
         {message.replyTo && (
           <div
             className="chat-reply-quote"
@@ -129,6 +127,7 @@ export default function ChatPanel({
   partnerPresence,
   messages,
   isPartnerTyping,
+  roomId = DEFAULT_ROOM_ID,
 }: {
   open: boolean;
   onClose: () => void;
@@ -137,6 +136,7 @@ export default function ChatPanel({
   partnerPresence: Presence | null;
   messages: ChatMessage[];
   isPartnerTyping: boolean;
+  roomId?: string;
 }) {
   const [text, setText] = useState("");
   const [isFloating, setIsFloating] = useState(false);
@@ -145,38 +145,33 @@ export default function ChatPanel({
   const typingTimeoutRef = useRef<any>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Floating Draggable State (position coordinates)
   const [pos, setPos] = useState({ x: 40, y: 80 });
   const isDraggingRef = useRef(false);
   const dragStartRef = useRef({ x: 0, y: 0 });
 
-  // Mark unread messages as seen when chat window is open
   useEffect(() => {
     if (open && messages.length > 0) {
-      markMessagesSeen(selfName, messages);
+      markMessagesSeen(roomId, selfName, messages);
     }
-  }, [open, messages, selfName]);
+  }, [open, messages, selfName, roomId]);
 
-  // Scroll to bottom on new messages
   useEffect(() => {
     if (open) {
       listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
     }
   }, [messages, open, isPartnerTyping]);
 
-  // Launch Standalone Native Browser Popup Window
   const openNewWindow = () => {
     if (typeof window !== "undefined") {
-      onClose(); // close side drawer in main window
+      onClose();
       window.open(
-        "/chat-popout",
+        `/chat-popout?room=${encodeURIComponent(roomId)}`,
         "LovewaveChatWindow",
         "width=380,height=560,resizable=yes,scrollbars=yes,status=no,location=no,toolbar=no"
       );
     }
   };
 
-  // Handle Swipe/Drag-to-Reply trigger
   const handleReplyTo = (msg: ChatMessage) => {
     setReplyingTo(msg);
     setTimeout(() => {
@@ -184,7 +179,6 @@ export default function ChatPanel({
     }, 50);
   };
 
-  // Scroll to original quoted message on quote tap
   const handleQuoteClick = (targetId?: string) => {
     if (!targetId) return;
     const el = document.getElementById(`msg-${targetId}`);
@@ -195,142 +189,91 @@ export default function ChatPanel({
     }
   };
 
-  // Mouse & Touch Drag Handlers for In-App Floating Mode
   const startDrag = (clientX: number, clientY: number) => {
     if (!isFloating) return;
     isDraggingRef.current = true;
     dragStartRef.current = { x: clientX - pos.x, y: clientY - pos.y };
   };
 
-  const onMouseDown = (e: React.MouseEvent) => {
-    if (!isFloating || (e.target as HTMLElement).tagName === "BUTTON") return;
-    startDrag(e.clientX, e.clientY);
+  const onDrag = (clientX: number, clientY: number) => {
+    if (!isDraggingRef.current) return;
+    const newX = clientX - dragStartRef.current.x;
+    const newY = clientY - dragStartRef.current.y;
+    setPos({ x: newX, y: newY });
   };
 
-  const onTouchStart = (e: React.TouchEvent) => {
-    if (!isFloating || (e.target as HTMLElement).tagName === "BUTTON") return;
-    const touch = e.touches[0];
-    if (touch) startDrag(touch.clientX, touch.clientY);
+  const stopDrag = () => {
+    isDraggingRef.current = false;
   };
 
-  useEffect(() => {
-    const onMouseMove = (e: MouseEvent) => {
-      if (!isDraggingRef.current) return;
-      const newX = Math.max(10, Math.min(window.innerWidth - 340, e.clientX - dragStartRef.current.x));
-      const newY = Math.max(10, Math.min(window.innerHeight - 440, e.clientY - dragStartRef.current.y));
-      setPos({ x: newX, y: newY });
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      if (!isDraggingRef.current) return;
-      const touch = e.touches[0];
-      if (touch) {
-        const newX = Math.max(10, Math.min(window.innerWidth - 340, touch.clientX - dragStartRef.current.x));
-        const newY = Math.max(10, Math.min(window.innerHeight - 440, touch.clientY - dragStartRef.current.y));
-        setPos({ x: newX, y: newY });
-      }
-    };
-
-    const endDrag = () => {
-      isDraggingRef.current = false;
-    };
-
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", endDrag);
-    window.addEventListener("touchmove", onTouchMove);
-    window.addEventListener("touchend", endDrag);
-
-    return () => {
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", endDrag);
-      window.removeEventListener("touchmove", onTouchMove);
-      window.removeEventListener("touchend", endDrag);
-    };
-  }, [pos, isFloating]);
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
+  const handleTyping = (val: string) => {
     setText(val);
+    setTypingStatus(roomId, selfName, true);
 
-    if (val.trim().length > 0) {
-      setTypingStatus(selfName, true);
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = setTimeout(() => {
-        setTypingStatus(selfName, false);
-      }, 2500);
-    } else {
-      setTypingStatus(selfName, false);
-    }
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      setTypingStatus(roomId, selfName, false);
+    }, 2000);
   };
 
-  const send = (e: React.FormEvent) => {
+  const submitMsg = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!text.trim()) return;
+    const clean = text.trim();
+    if (!clean) return;
+
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    setTypingStatus(selfName, false);
-    
-    sendChatMessage(
-      selfName,
-      text.trim(),
-      replyingTo ? { id: replyingTo.id, sender: replyingTo.sender, text: replyingTo.text } : null
-    );
-    
+    setTypingStatus(roomId, selfName, false);
+
+    sendChatMessage(roomId, selfName, clean, replyingTo);
     setText("");
     setReplyingTo(null);
   };
 
   if (!open) return null;
 
-  const partnerOnline = partnerPresence ? partnerPresence.online : false;
-
   return (
     <div
-      className={
-        isFloating
-          ? "chat-floating-window"
-          : `chat-drawer ${open ? "chat-drawer-open" : ""}`
-      }
-      style={
-        isFloating
-          ? {
-              left: `${pos.x}px`,
-              top: `${pos.y}px`,
-            }
-          : undefined
-      }
+      className={isFloating ? "chat-floating-window" : "chat-drawer chat-drawer-open"}
+      style={isFloating ? { left: `${pos.x}px`, top: `${pos.y}px` } : {}}
+      onMouseMove={(e) => onDrag(e.clientX, e.clientY)}
+      onMouseUp={stopDrag}
+      onTouchMove={(e) => onDrag(e.touches[0].clientX, e.touches[0].clientY)}
+      onTouchEnd={stopDrag}
     >
       <div
         className={`chat-header ${isFloating ? "chat-header-draggable" : ""}`}
-        onMouseDown={onMouseDown}
-        onTouchStart={onTouchStart}
+        onMouseDown={(e) => startDrag(e.clientX, e.clientY)}
+        onTouchStart={(e) => startDrag(e.touches[0].clientX, e.touches[0].clientY)}
       >
         <div className="chat-header-title">
           <div className="chat-header-drag-handle">
             {isFloating && <span className="drag-icon">⋮⋮</span>}
-            <span>Notes to {partnerName}</span>
+            <span>Chat with {partnerName}</span>
           </div>
-          <span className={`chat-partner-status ${partnerOnline ? "status-online" : "status-offline"}`}>
-            {partnerOnline ? "🟢 Online" : "🔴 Offline (Disconnected)"}
+          <span
+            className={`chat-partner-status ${
+              partnerPresence?.online ? "status-online" : "status-offline"
+            }`}
+          >
+            {partnerPresence?.online ? "🟢 Active Now" : "🔴 Offline"}
           </span>
         </div>
 
         <div className="chat-header-controls">
           <button
             className="chat-mode-btn"
-            onClick={openNewWindow}
-            title="Open chat in a separate native browser window to move across screens & desktops"
+            onClick={() => setIsFloating(!isFloating)}
+            title={isFloating ? "Dock to Side Drawer" : "Float on Screen"}
           >
-            🗔 New Window
+            {isFloating ? "📌 Dock" : "🔲 Float"}
           </button>
-
           <button
             className="chat-mode-btn"
-            onClick={() => setIsFloating(!isFloating)}
-            title={isFloating ? "Dock chat to side drawer" : "Float chat window inside this tab"}
+            onClick={openNewWindow}
+            title="Open in Standalone Native Window"
           >
-            {isFloating ? "📌 Dock Side" : "↗ Float In-App"}
+            ↗️ Pop Out
           </button>
-
           <button className="chat-close" onClick={onClose} aria-label="Close chat">
             ✕
           </button>
@@ -338,50 +281,50 @@ export default function ChatPanel({
       </div>
 
       <div className="chat-list" ref={listRef}>
-        {messages.length === 0 && <p className="chat-empty">Say something to {partnerName}.</p>}
+        {messages.length === 0 ? (
+          <p className="chat-empty">No messages yet. Swipe right on a message to reply!</p>
+        ) : (
+          messages.map((m, idx) => (
+            <ChatMessageItem
+              key={m.id || idx}
+              message={m}
+              selfName={selfName}
+              partnerName={partnerName}
+              onReply={handleReplyTo}
+              onQuoteClick={handleQuoteClick}
+            />
+          ))
+        )}
 
-        {messages.map((m) => (
-          <ChatMessageItem
-            key={m.id}
-            message={m}
-            selfName={selfName}
-            partnerName={partnerName}
-            onReply={handleReplyTo}
-            onQuoteClick={handleQuoteClick}
-          />
-        ))}
-
-        {/* Real-Time Typing Indicator */}
         {isPartnerTyping && (
           <div className="chat-typing-indicator">
             <span className="typing-dot" />
             <span className="typing-dot" />
             <span className="typing-dot" />
-            <span className="typing-text">{partnerName} is typing...</span>
+            <span className="typing-text">{partnerName} is typing…</span>
           </div>
         )}
       </div>
 
-      {/* Replying Banner above Chat Input Row */}
       {replyingTo && (
         <div className="replying-banner">
           <div className="replying-meta">
             <span className="replying-label">Replying to {replyingTo.sender}</span>
             <p className="replying-snippet">{replyingTo.text}</p>
           </div>
-          <button type="button" className="replying-cancel" onClick={() => setReplyingTo(null)} title="Cancel reply">
+          <button className="replying-cancel" onClick={() => setReplyingTo(null)} title="Cancel reply">
             ✕
           </button>
         </div>
       )}
 
-      <form className="chat-input-row" onSubmit={send}>
+      <form className="chat-input-row" onSubmit={submitMsg}>
         <input
           ref={inputRef}
           className="chat-input"
-          placeholder={replyingTo ? `Replying to ${replyingTo.sender}...` : `Type a note to ${partnerName}...`}
+          placeholder={`Message ${partnerName}…`}
           value={text}
-          onChange={handleInputChange}
+          onChange={(e) => handleTyping(e.target.value)}
         />
         <button className="chat-send" type="submit">
           Send
