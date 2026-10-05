@@ -133,12 +133,25 @@ export async function joinRoomAuthorized(
   const cleanEmailKey = userEmail.toLowerCase().replace(/[^a-z0-9]/g, "_");
 
   try {
+    // 1. Verify that the room actually exists
+    const metaSnap = await get(metadataRef(targetRoom));
+    if (!metaSnap.exists() || !metaSnap.val()) {
+      return {
+        success: false,
+        message: `Room Code "${targetRoom}" does not exist. Please check your room code or click "✨ Create New Room" to create one.`,
+      };
+    }
+
+    // 2. Fetch room members
     const memSnap = await get(membersRef(targetRoom));
     const members = memSnap.val() || {};
     const memberKeys = Object.keys(members);
 
     // If user is already a registered member, allow access
-    if (members[cleanEmailKey] || memberKeys.some((k) => members[k]?.name === userName)) {
+    if (
+      members[cleanEmailKey] ||
+      memberKeys.some((k) => members[k]?.name === userName || members[k]?.email === userEmail)
+    ) {
       return { success: true };
     }
 
@@ -155,11 +168,13 @@ export async function joinRoomAuthorized(
     // Otherwise room is full and restricted
     return {
       success: false,
-      message: `Access Denied: Room ${targetRoom} is a private 2-person room and already has 2 members connected. No other people can join without the code/invitation.`,
+      message: `Access Denied: Room "${targetRoom}" is a private 2-person room and already has 2 connected members. No other people can join without the code/invitation.`,
     };
   } catch (err: any) {
-    // If DB check fails, fallback to allowing join
-    return { success: true };
+    return {
+      success: false,
+      message: err?.message || "Failed to join room. Please check the Room Code.",
+    };
   }
 }
 
