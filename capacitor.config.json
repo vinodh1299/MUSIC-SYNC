@@ -3,7 +3,7 @@
   "appName": "Duotone",
   "webDir": "out",
   "server": {
-    "url": "https://music-sync-vinodh1299s-projects.vercel.app",
+    "url": "https://music-sync-git-main-vinodh1299s-projects.vercel.app",
     "cleartext": true
   },
   "android": {

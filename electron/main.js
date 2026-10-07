@@ -26,7 +26,7 @@ function createWindow() {
   const targetUrl =
     process.env.ELECTRON_START_URL ||
     process.env.DUOTONE_URL ||
-    "https://music-sync-vinodh1299s-projects.vercel.app";
+    "https://music-sync-git-main-vinodh1299s-projects.vercel.app";
 
   mainWindow.loadURL(targetUrl);
 
