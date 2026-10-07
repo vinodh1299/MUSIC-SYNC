@@ -584,7 +584,18 @@ export default function AuthModal({
         )}
 
         <div className="auth-footer">
-          🔒 Permanent Login • 2-Step Verification Enabled
+          <div>🔒 Permanent Login • 2-Step Verification Enabled</div>
+          <div className="auth-win-download-container">
+            <a
+              href="https://github.com/vinodh1299/MUSIC-SYNC/releases/latest/download/Duotone-Setup.exe"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="auth-win-download-link"
+              title="Download & Install Duotone for Windows (.exe)"
+            >
+              💻 Download for Windows (.exe)
+            </a>
+          </div>
         </div>
       </div>
     </div>

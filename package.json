@@ -2,6 +2,7 @@
   "name": "duotone",
   "version": "1.0.0",
   "private": true,
+  "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -9,7 +10,31 @@
     "lint": "next lint",
     "cap:sync": "npx cap sync android",
     "apk:build": "cd android && ./gradlew assembleRelease",
-    "aab:build": "cd android && ./gradlew bundleRelease"
+    "aab:build": "cd android && ./gradlew bundleRelease",
+    "electron:dev": "electron electron/main.js",
+    "win:build": "electron-builder --win nsis"
+  },
+  "build": {
+    "appId": "com.lovewave.musicsync",
+    "productName": "Duotone",
+    "artifactName": "Duotone-Setup.${ext}",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      "public/**/*"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Duotone"
+    }
   },
   "dependencies": {
     "@capacitor/android": "^8.5.2",
@@ -25,6 +50,8 @@
     "@types/node": "^20.14.0",
     "@types/nodemailer": "^8.0.2",
     "@types/react": "^18.3.5",
+    "electron": "^44.6.0",
+    "electron-builder": "^26.15.3",
     "typescript": "^5.5.4"
   }
 }

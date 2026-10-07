@@ -93,6 +93,16 @@ export default function ConnectionThread({
           </button>
         </div>
 
+        <a
+          href="https://github.com/vinodh1299/MUSIC-SYNC/releases/latest/download/Duotone-Setup.exe"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="header-action-btn download-win-btn"
+          title="Download & Install Duotone for Windows (.exe)"
+        >
+          💻 Windows App
+        </a>
+
         <button className="header-action-btn" onClick={onSwitchRoom} title="Switch or Create Room">
           🔄 Switch Room
         </button>

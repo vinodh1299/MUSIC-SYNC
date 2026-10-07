@@ -1,6 +1,10 @@
 node_modules
 .next
 out
+dist
+*.exe
+public/downloads/*.exe
 .env.local
 .DS_Store
 *.log
+
