@@ -38,7 +38,8 @@ export default function ConnectionThread({
 
   const handleSignOutClick = () => {
     try {
-      signOut(getFirebaseAuth());
+      const auth = getFirebaseAuth();
+      if (auth) signOut(auth);
     } catch {}
     onSignOut();
   };

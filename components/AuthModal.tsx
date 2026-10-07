@@ -6,6 +6,7 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   updateProfile,
+  signOut,
 } from "@/lib/firebase";
 import { hashPassword } from "@/lib/crypto";
 
@@ -173,14 +174,16 @@ export default function AuthModal({
       // Try Firebase Auth in parallel
       try {
         const auth = getFirebaseAuth();
-        const resFb = await createUserWithEmailAndPassword(
-          auth,
-          pendingUserAccount.email,
-          password
-        );
-        if (resFb.user) {
-          await updateProfile(resFb.user, { displayName: pendingUserAccount.displayName });
-          pendingUserAccount.uid = resFb.user.uid;
+        if (auth) {
+          const resFb = await createUserWithEmailAndPassword(
+            auth,
+            pendingUserAccount.email,
+            password
+          );
+          if (resFb.user) {
+            await updateProfile(resFb.user, { displayName: pendingUserAccount.displayName });
+            pendingUserAccount.uid = resFb.user.uid;
+          }
         }
       } catch (err: any) {
         console.warn("Firebase Auth sign-up notice:", err?.message || err);
@@ -239,15 +242,21 @@ export default function AuthModal({
       if (!targetAccount) {
         try {
           const auth = getFirebaseAuth();
-          const resFb = await signInWithEmailAndPassword(auth, cleanEmail, password);
-          if (resFb.user) {
-            accountFound = true;
-            targetAccount = {
-              uid: resFb.user.uid,
-              displayName: resFb.user.displayName || cleanEmail.split("@")[0],
-              email: resFb.user.email || cleanEmail,
-              photoURL: resFb.user.photoURL,
-            };
+          if (auth) {
+            const resFb = await signInWithEmailAndPassword(auth, cleanEmail, password);
+            if (resFb.user) {
+              accountFound = true;
+              targetAccount = {
+                uid: resFb.user.uid,
+                displayName: resFb.user.displayName || cleanEmail.split("@")[0],
+                email: resFb.user.email || cleanEmail,
+                photoURL: resFb.user.photoURL,
+              };
+              // Sign out immediately so user is NOT logged in until 2FA OTP is verified
+              try {
+                await signOut(auth);
+              } catch {}
+            }
           }
         } catch (fbErr: any) {
           const code = fbErr?.code || "";
@@ -332,9 +341,11 @@ export default function AuthModal({
       // Try Firebase Auth in parallel
       try {
         const auth = getFirebaseAuth();
-        const resFb = await signInWithEmailAndPassword(auth, pendingUserAccount.email, password);
-        if (resFb.user) {
-          pendingUserAccount.uid = resFb.user.uid;
+        if (auth) {
+          const resFb = await signInWithEmailAndPassword(auth, pendingUserAccount.email, password);
+          if (resFb.user) {
+            pendingUserAccount.uid = resFb.user.uid;
+          }
         }
       } catch (err: any) {
         console.warn("Firebase Auth sign-in notice:", err?.message || err);

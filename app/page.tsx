@@ -84,30 +84,38 @@ export default function Home() {
       }
     } catch {}
 
-    // Listen to Firebase Auth state as well
+    // Listen to Firebase Auth state as well - only restore if 2FA session was already verified
     const auth = getFirebaseAuth();
-    const unsub = onAuthStateChanged(auth, (u) => {
-      if (u) {
-        const acc: UserAccount = {
-          uid: u.uid,
-          displayName: u.displayName || u.email?.split("@")[0] || "User",
-          email: u.email || "",
-          photoURL: u.photoURL,
-        };
-        setUser(acc);
-        try {
-          localStorage.setItem("duotone_user_account", JSON.stringify(acc));
-          localStorage.setItem("lovewave_user_account", JSON.stringify(acc));
-        } catch {}
-        if (acc.displayName) {
-          setSelfName(acc.displayName.split(" ")[0]);
-        }
-      }
-      setAuthChecked(true);
-    });
+    if (auth) {
+      const unsub = onAuthStateChanged(auth, (u) => {
+        if (u) {
+          const hasVerifiedSession =
+            localStorage.getItem("duotone_user_account") ||
+            localStorage.getItem("lovewave_user_account");
 
-    setAuthChecked(true);
-    return () => unsub();
+          if (hasVerifiedSession) {
+            const acc: UserAccount = {
+              uid: u.uid,
+              displayName: u.displayName || u.email?.split("@")[0] || "User",
+              email: u.email || "",
+              photoURL: u.photoURL,
+            };
+            setUser(acc);
+            try {
+              localStorage.setItem("duotone_user_account", JSON.stringify(acc));
+              localStorage.setItem("lovewave_user_account", JSON.stringify(acc));
+            } catch {}
+            if (acc.displayName) {
+              setSelfName(acc.displayName.split(" ")[0]);
+            }
+          }
+        }
+        setAuthChecked(true);
+      });
+      return () => unsub();
+    } else {
+      setAuthChecked(true);
+    }
   }, []);
 
   // Check URL query param for room share link (e.g. ?room=SYNC-8492) or localStorage
@@ -161,7 +169,10 @@ export default function Home() {
   };
 
   const handleSignOut = () => {
-    try { signOut(getFirebaseAuth()); } catch {}
+    try {
+      const auth = getFirebaseAuth();
+      if (auth) signOut(auth);
+    } catch {}
     try {
       localStorage.removeItem("duotone_user_account");
       localStorage.removeItem("lovewave_user_account");

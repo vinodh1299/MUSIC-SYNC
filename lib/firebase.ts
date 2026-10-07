@@ -47,11 +47,19 @@ export function getDb() {
 }
 
 export function getFirebaseAuth() {
-  const auth = getAuth(getFirebaseApp());
+  if (!process.env.NEXT_PUBLIC_FIREBASE_API_KEY) {
+    return null as any;
+  }
   try {
-    setPersistence(auth, browserLocalPersistence);
-  } catch {}
-  return auth;
+    const auth = getAuth(getFirebaseApp());
+    try {
+      setPersistence(auth, browserLocalPersistence);
+    } catch {}
+    return auth;
+  } catch (err) {
+    console.warn("Firebase Auth initialization notice:", err);
+    return null as any;
+  }
 }
 
 export {
